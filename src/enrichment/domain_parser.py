@@ -28,11 +28,18 @@ def parse_domain(domain_name: str) -> dict:
     has_camel_case = bool(re.search(r'[a-z][A-Z]', sld))
     is_multi_word = has_hyphens or has_camel_case
 
+    # NEW: Check for Numbers
+    has_numbers = bool(re.search(r'\d', sld))
+    numeric_chars = sum(c.isdigit() for c in sld)
+    numeric_percentage = numeric_chars / length if length >0 else 0
+
     return {
         "sld": sld,
         "tld": tld,
         "length": length,
-        "is_multi_word": is_multi_word
+        "is_multi_word": is_multi_word,
+        "has_numbers": has_numbers,
+        "numeric_percentage": numeric_percentage
     }
 
 

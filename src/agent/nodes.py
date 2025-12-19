@@ -3,8 +3,9 @@ from src.agent.state import AgentState
 from src.enrichment.domain_parser import parse_domain
 from src.enrichment.llm_enricher import LLMEnricher
 from src.enrichment.retrieval.chroma_client import ChromaClient
-from src.enrichment.retrieval.filters import build_where_clause, get_tld_family
+from src.enrichment.retrieval.filters import build_where_clause, get_tld_family, apply_numeric_filter
 from src.enrichment.retrieval.scoring import score_candidates
+
 import config
 
 # Initialize shared resources
@@ -84,6 +85,7 @@ def enrichment_node(state: AgentState) ->Dict:
             "sld": parsed["sld"],
             "tld": parsed["tld"],
             "length": parsed["length"],
+            "has_numbers": parsed["has_numbers"],
             "primary_category": enriched["primary_category"],
             "secondary_category": enriched["secondary_category"],
             "descriptions": enriched["descriptions"]
@@ -155,9 +157,17 @@ def retrieve_node(state: AgentState) ->Dict:
                 candidate["query_index"] = query_idx
             
             all_candidates.extend(candidates)
+
+        # New: Apply numeric filter BEFORE fallback Check 
+        if config.ENABLE_NUMERIC_FILTER:
+            all_candidates = apply_numeric_filter(
+               all_candidates,
+               input_has_numbers=state.get("has_numbers", False),
+               threshold = config.NUMERIC_THRESHOLD
+            )
         
         # Check if we have enough results for unknown TLDs
-        if config.ENABLE_TLD_FALLBACK and tld_family == "other" and len(all_candidates) < config.MIN_RESULTS_THRESHOLD:
+        if config.ENABLE_TLD_FALLBACK and len(all_candidates) < config.MIN_RESULTS_THRESHOLD:
             print(f"\n[INFO] Only {len(all_candidates)} results for unknown TLD '{state['tld']}'")
             print(f"[INFO] Expanding search to all TLDs (removing TLD filter)...")
             
@@ -183,6 +193,13 @@ def retrieve_node(state: AgentState) ->Dict:
                     candidate["query_index"] = query_idx
                 
                 all_candidates.extend(candidates)
+
+            if config.ENABLE_NUMERIC_FILTER:
+                all_candidates = apply_numeric_filter(
+                    all_candidates,
+                    input_has_numbers=state.get("has_numbers", False),
+                    threshold = config.NUMERIC_THRESHOLD
+                )
             
             print(f"[INFO] Expanded search found {len(all_candidates)} results across all TLDs\n")
         

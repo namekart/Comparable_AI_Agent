@@ -10,6 +10,7 @@ class AgentState(TypedDict):
     sld: str
     tld: str
     length: int
+    has_numbers: bool # NEW
 
     # LLM enrichment
     primary_category: str

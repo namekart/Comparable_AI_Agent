@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import List, Dict
 import config
+import re
+import tldextract
 
 def get_tld_family(tld: str) -> str:
     """Return the TLD family for a given TLD"""
@@ -70,6 +72,58 @@ def apply_length_band_filter(candidates: List[Dict], target_length: int) -> List
         c for c in candidates
         if abs(c["metadata"]["length"] - target_length) <= config.MAX_LENGTH_DIFF
     ]
+
+def has_numeric_sld(sld: str) -> bool:
+    """Check if SLD contains numbers"""
+    return bool(re.search(r'\d', sld))
+
+def get_numeric_percentage(sld: str) -> float:
+    """Calculate percentage of numeric characters in SLD"""
+    if not sld:
+        return 0.0
+    numeric_chars = sum(c.isdigit() for c in sld)
+    return numeric_chars / len(sld)
+
+def apply_numeric_filter(candidates: List[Dict], input_has_numbers: bool, threshold: float = 0.3) -> List[Dict]:
+    """
+    Filter candidates based on numeric content.
+    If input has NO numbers, exclude candidates with high numeric content (> threshold).
+    If input HAS numbers, prefer candidates with numbers (>threshold)
+
+    Args:
+        candidates: List of candidate domains
+        input_has_numbers: Whether input domain contains numbers
+        threshold: Maximum allowed numeric percentage for non-numeric inputs
+
+    Returns:
+        Filtered candidate list
+    """
+    # if input_has_numbers:
+    #     # Input has numbers - don't filter out numeric domains
+    #     return candidates
+    
+    # Input has NO numbers - filter out highly numeric domains
+    filtered = []
+    for candidate in candidates:
+        domain = candidate["metadata"].get("domain", "")
+        extracted = tldextract.extract(domain)
+        sld = extracted.domain
+
+        numeric_pct = get_numeric_percentage(sld)
+
+        if input_has_numbers:
+             
+             if numeric_pct >=threshold:
+                filtered.append(candidate)
+        else:
+
+        # Only include if numeric percentage is below threshold
+            if numeric_pct < threshold:
+                
+                filtered.append(candidate)
+
+    return filtered
+
 
 
 

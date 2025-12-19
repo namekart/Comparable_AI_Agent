@@ -145,3 +145,6 @@ RECENCY_BANDS = [
     (730, 0.6),
     (float('inf'), 0.3)
 ]
+
+ENABLE_NUMERIC_FILTER = True
+NUMERIC_THRESHOLD = 0.3
