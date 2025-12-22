@@ -7,8 +7,20 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 import uvicorn
 from datetime import datetime
+import logging
+import sys
 
 from src.agent.graph import create_agent_graph
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title= "Domain Comparable Search API",
@@ -48,9 +60,29 @@ class DomainSearchResponse(BaseModel):
 async def startup_event():
     """Initialize the agent on startup"""
     global agent_graph
-    print("🚀 Initializing Domain Comparable Agent...")
-    agent_graph = create_agent_graph()
-    print("✅ Agent initialized successfully!")
+    try:
+        logger.info("=" * 60)
+        logger.info("🚀 STARTING DOMAIN COMPARABLE AGENT API")
+        logger.info("=" * 60)
+        logger.info("Step 1: Importing dependencies...")
+        logger.info("Step 2: Creating agent graph...")
+        
+        agent_graph = create_agent_graph()
+        
+        logger.info("✅ Agent initialized successfully!")
+        logger.info("✅ ChromaDB connection established")
+        logger.info("✅ LLM enricher ready")
+        logger.info("=" * 60)
+        logger.info("🎉 API IS READY TO ACCEPT REQUESTS")
+        logger.info("=" * 60)
+    except Exception as e:
+        logger.error("=" * 60)
+        logger.error("❌ AGENT INITIALIZATION FAILED!")
+        logger.error(f"❌ Error: {str(e)}")
+        logger.error("=" * 60)
+        import traceback
+        logger.error(traceback.format_exc())
+        raise
 
 @app.get("/")
 async def root():
@@ -82,13 +114,14 @@ async def search_comparables(request: DomainSearchRequest):
     """
     try:
         if agent_graph is None:
+            logger.error("❌ Agent not initialized - cannot process request")
             raise HTTPException(status_code=503, detail="Agent not initialized")
         
         # Validate input
         if not request.domain or len(request.domain.strip()) == 0:
             raise HTTPException(status_code=400, detail="Domain cannot be empty")
         
-        print(f"\n[API] Processing request for domain: {request.domain}")
+        logger.info(f"📥 Processing request for domain: {request.domain}")
         
         # Run the agent
         initial_state = {
@@ -99,6 +132,7 @@ async def search_comparables(request: DomainSearchRequest):
         
         # Check for errors in result
         if result.get("error"):
+            logger.warning(f"⚠️ Agent returned error for {request.domain}: {result.get('error')}")
             return DomainSearchResponse(
                 success=False,
                 data=None,
@@ -109,7 +143,7 @@ async def search_comparables(request: DomainSearchRequest):
         # Extract the result
         output = result.get("result", {})
         
-        print(f"[API] Successfully processed {request.domain} - found {output.get('total_comparables', 0)} comparables")
+        logger.info(f"✅ Successfully processed {request.domain} - found {output.get('total_comparables', 0)} comparables")
         
         return DomainSearchResponse(
             success=True,
@@ -121,7 +155,9 @@ async def search_comparables(request: DomainSearchRequest):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[API ERROR] {str(e)}")
+        logger.error(f"❌ API ERROR for {request.domain}: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.post("/api/v1/batch-search")
