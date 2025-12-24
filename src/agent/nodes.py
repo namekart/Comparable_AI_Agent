@@ -243,7 +243,7 @@ def score_node(state: AgentState) -> Dict:
             
             print(f"\n{idx}. {comp['domain']} - ${comp['price']:,.0f}")
             print(f"   Score: {comp['score']} | Semantic: {comp['semantic_sim']} | Category: {comp['cat_match']} | Recency: {comp['recency']}")
-            print(f"   >> Matched: Input Query #{query_idx} <-> {comp['domain']} Description #{desc_idx}")
+            print(f"   >> Matched: Input Query #{query_idx } <-> {comp['domain']} Description #{desc_idx}")
             
             # Show matched description if available
             if comp.get("description"):

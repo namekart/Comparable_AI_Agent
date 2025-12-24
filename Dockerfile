@@ -15,7 +15,10 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# 🔴 REQUIRED for torch==2.1.2+cpu
+RUN pip install --no-cache-dir \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+    -r requirements.txt
 
 # Copy the entire project
 COPY . .
@@ -36,5 +39,4 @@ RUN echo "=== Verifying ChromaDB Installation ===" && \
 EXPOSE 8000
 
 # Run the application
-# Using single worker since ChromaDB doesn't support multi-process access
 CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
