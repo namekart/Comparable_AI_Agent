@@ -6,9 +6,18 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 LLM_MODEL = "openai/gpt-5.1"  # OpenRouter model format
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # OpenRouter model format
 
-# ChromaDB Configuration
-CHROMA_PERSIST_DIR = "./chroma_db"
-CHROMA_COLLECTION_NAME = "domain_embeddings"
+
+SUPABASE_HOST = os.getenv("SUPABASE_HOST")
+SUPABASE_PORT = os.getenv("SUPABASE_PORT", "5432")
+SUPABASE_DB = os.getenv("SUPABASE_DB", "postgres")
+SUPABASE_USER = os.getenv("SUPABASE_USER", "postgres")
+SUPABASE_PASSWORD = os.getenv("SUPABASE_PASSWORD")
+
+
+
+# # ChromaDB Configuration
+# CHROMA_PERSIST_DIR = "./chroma_db"
+# CHROMA_COLLECTION_NAME = "domain_embeddings"
 
 DOMAIN_CATEGORIES = [
     "Acronym",
@@ -123,7 +132,7 @@ TLD_FAMILIES = {
 MAX_LENGTH_DIFF = 2
 CHROMA_RESULTS_PER_QUERY = 50
 FINAL_TOP_K = 10
-MIN_SCORE_THRESHOLD = 0.5
+MIN_SCORE_THRESHOLD = 0.4
 
 # Minimum results threshold for unknown TLD fallback
 MIN_RESULTS_THRESHOLD = 10

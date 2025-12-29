@@ -64,25 +64,44 @@ async def startup_event():
         logger.info("=" * 60)
         logger.info("🚀 STARTING DOMAIN COMPARABLE AGENT API")
         logger.info("=" * 60)
+
+        logger.info(f"Checking Supabase connection to: {config.SUPABASE_HOST}")
+
+        from src.enrichment.retrieval.supabase_client import SupabaseClient
+
+        try:
+            supabase = SupabaseClient()
+            doc_count = supabase.count()
+            supabase.close()
+
+            logger.info(f"Supabase connected successfully")
+            logger.info(f" Total documents: {doc_count:,}")
+
+            if doc_count == 0:
+                logger.error(" Supabase table is empty (0 documents)")
+                raise ValueError("Supabase contains no documents - run data migration first")
+        except Exception as e:
+            logger.error(f" Supabase connection failed: {e}")
+            raise
         
-        # Verify ChromaDB files exist
-        import os
-        chroma_path = "./chroma_db"
-        sqlite_path = f"{chroma_path}/chroma.sqlite3"
+        # # Verify ChromaDB files exist
+        # import os
+        # chroma_path = "./chroma_db"
+        # sqlite_path = f"{chroma_path}/chroma.sqlite3"
         
-        logger.info(f"Checking ChromaDB at: {chroma_path}")
+        # logger.info(f"Checking ChromaDB at: {chroma_path}")
         
-        if not os.path.exists(chroma_path):
-            logger.error(f"❌ ChromaDB directory not found: {chroma_path}")
-            raise FileNotFoundError(f"ChromaDB directory missing")
+        # if not os.path.exists(chroma_path):
+        #     logger.error(f"❌ ChromaDB directory not found: {chroma_path}")
+        #     raise FileNotFoundError(f"ChromaDB directory missing")
         
-        if not os.path.exists(sqlite_path):
-            logger.error(f"❌ ChromaDB database not found: {sqlite_path}")
-            logger.error("💡 Hint: Check if .dockerignore excludes *.sqlite3 files")
-            raise FileNotFoundError(f"ChromaDB database missing")
+        # if not os.path.exists(sqlite_path):
+        #     logger.error(f"❌ ChromaDB database not found: {sqlite_path}")
+        #     logger.error("💡 Hint: Check if .dockerignore excludes *.sqlite3 files")
+        #     raise FileNotFoundError(f"ChromaDB database missing")
         
-        db_size = os.path.getsize(sqlite_path) / (1024 * 1024)  # MB
-        logger.info(f"✅ ChromaDB database found ({db_size:.2f} MB)")
+        # db_size = os.path.getsize(sqlite_path) / (1024 * 1024)  # MB
+        # logger.info(f"✅ ChromaDB database found ({db_size:.2f} MB)")
         
         logger.info("Step 1: Creating agent graph...")
         agent_graph = create_agent_graph()

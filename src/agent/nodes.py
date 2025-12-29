@@ -2,7 +2,7 @@ from typing import Dict
 from src.agent.state import AgentState
 from src.enrichment.domain_parser import parse_domain
 from src.enrichment.llm_enricher import LLMEnricher
-from src.enrichment.retrieval.chroma_client import ChromaClient
+from src.enrichment.retrieval.supabase_client import SupabaseClient
 from src.enrichment.retrieval.filters import build_where_clause, get_tld_family, apply_numeric_filter
 from src.enrichment.retrieval.scoring import score_candidates
 
@@ -10,7 +10,7 @@ import config
 
 # Initialize shared resources
 llm_enricher = LLMEnricher()
-chroma_client = ChromaClient()
+supabase_client = SupabaseClient()
 
 LLM_PROMPT_TEMPLATE = """
 You are a domain branding and analysis expert.
@@ -147,7 +147,7 @@ def retrieve_node(state: AgentState) ->Dict:
         # Query ChromaDB for each description
         all_candidates = []
         for query_idx, query in enumerate(queries, start=1):
-            candidates = chroma_client.query(
+            candidates = supabase_client.query(
                 query_texts=[query],
                 where=where,
                 n_results=config.CHROMA_RESULTS_PER_QUERY
@@ -183,7 +183,7 @@ def retrieve_node(state: AgentState) ->Dict:
             # Retry search without TLD filter
             all_candidates = []
             for query_idx, query in enumerate(queries, start=1):
-                candidates = chroma_client.query(
+                candidates = supabase_client.query(
                     query_texts=[query],
                     where=where_no_tld,
                     n_results=config.CHROMA_RESULTS_PER_QUERY
@@ -242,12 +242,22 @@ def score_node(state: AgentState) -> Dict:
             desc_idx = comp.get("desc_index", 1)
             
             print(f"\n{idx}. {comp['domain']} - ${comp['price']:,.0f}")
-            print(f"   Score: {comp['score']} | Semantic: {comp['semantic_sim']} | Category: {comp['cat_match']} | Recency: {comp['recency']}")
-            print(f"   >> Matched: Input Query #{query_idx } <-> {comp['domain']} Description #{desc_idx}")
+            print(f"   Score: {comp['score']:.4f} | Semantic: {comp['semantic_sim']:.4f} | Category: {comp['cat_match']:.2f} | Recency: {comp['recency']:.2f}")
+            print(f"   Categories: {comp['primary_category']} / {comp['secondary_category']}")
+            print(f"   Date: {comp['date']} | Platform: {comp['platform']}")
+            print(f"   >> Matched: Input Query #{query_idx} <-> {comp['domain']} Description #{desc_idx}")
             
             # Show matched description if available
             if comp.get("description"):
-                print(f"   Description: {comp['description'][:120]}...")
+                print(f"   📝 Description (Desc #{desc_idx}):")
+                # Show full description, wrapped nicely
+                desc = comp['description']
+                # Split into lines of max 100 chars for readability
+                import textwrap
+                wrapped = textwrap.fill(desc, width=100, initial_indent='      ', subsequent_indent='      ')
+                print(wrapped)
+            else:
+                print(f"   ⚠️  Warning: No description extracted for this match")
         
         print("\n" + "="*80 + "\n")
         # ===== END LOGGING =====

@@ -105,13 +105,38 @@ def score_candidates(candidates: List[Dict], input_primary: str, input_secondary
         document = candidate.get("document", "")
 
         # Extract description from document field
-        # Document format: "Domain: {domain}. Category: {primary}, {secondary}. Description: {desc_text}"
+        # Handle various document formats (with or without spacing issues)
+        # Formats: "Domain: X. Category: Y, Z. Description: ABC"
+        #          "Domain: X.Category: Y,Z Description:ABC" (no spaces)
         description = ""
-        if document and "Description: " in document:
-            # Extract text after "Description: "
-            desc_start = document.find("Description: ")
-            if desc_start != -1:
-                description = document[desc_start + len("Description: "):].strip()
+        if document:
+            # Try multiple patterns to extract description
+            desc_patterns = [
+                "Description: ",
+                "Description:",
+                " Description: ",
+                " Description:",
+                ".Description:",
+                ". Description:"
+            ]
+            
+            for pattern in desc_patterns:
+                if pattern in document:
+                    desc_start = document.find(pattern)
+                    if desc_start != -1:
+                        # Extract text after the pattern
+                        description = document[desc_start + len(pattern):].strip()
+                        break
+            
+            # Fallback: if still empty, try splitting by Category
+            if not description and "Category:" in document:
+                parts = document.split("Category:")
+                if len(parts) > 1:
+                    remaining = parts[1]
+                    if "Description" in remaining:
+                        desc_part = remaining.split("Description", 1)
+                        if len(desc_part) > 1:
+                            description = desc_part[1].lstrip(": .").strip()
 
         # Convert distance to similarity(Chroma uses L2 distance)
         # For cosine distance: similarity = 1- distance

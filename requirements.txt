@@ -17,4 +17,5 @@ tldextract>=5.0.0
 fastapi
 uvicorn[standard]
 
-
+psycopg2-binary>=2.9.9
+pgvector>=0.2.3
