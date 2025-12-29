@@ -24,16 +24,21 @@ RUN pip install --no-cache-dir \
 COPY . .
 
 # Verify ChromaDB files are present
-RUN echo "=== Verifying ChromaDB Installation ===" && \
-    ls -lah /app/chroma_db/ && \
-    if [ -f "/app/chroma_db/chroma.sqlite3" ]; then \
-        echo "✅ ChromaDB database found ($(du -h /app/chroma_db/chroma.sqlite3 | cut -f1))"; \
-        echo "✅ Total ChromaDB size: $(du -sh /app/chroma_db | cut -f1)"; \
-    else \
-        echo "❌ ERROR: chroma.sqlite3 NOT found!"; \
-        echo "Check that .dockerignore doesn't exclude *.sqlite3"; \
-        exit 1; \
-    fi
+# RUN echo "=== Verifying ChromaDB Installation ===" && \
+#     ls -lah /app/chroma_db/ && \
+#     if [ -f "/app/chroma_db/chroma.sqlite3" ]; then \
+#         echo "✅ ChromaDB database found ($(du -h /app/chroma_db/chroma.sqlite3 | cut -f1))"; \
+#         echo "✅ Total ChromaDB size: $(du -sh /app/chroma_db | cut -f1)"; \
+#     else \
+#         echo "❌ ERROR: chroma.sqlite3 NOT found!"; \
+#         echo "Check that .dockerignore doesn't exclude *.sqlite3"; \
+#         exit 1; \
+#     fi
+# Verify Python dependencies
+RUN echo "=== Verifying Installation ===" && \
+    python -c "import psycopg2; print('✅ psycopg2 installed')" && \
+    python -c "import sentence_transformers; print('✅ sentence-transformers installed')" && \
+    echo "✅ Dependencies verified"
 
 # Expose port 8000
 EXPOSE 8000

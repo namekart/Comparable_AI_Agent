@@ -1,30 +1,35 @@
 # Python cache
-__pycache__
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
+*.py[cod]
+*$py.class
 
 # Virtual environments
 env/
 venv/
 .venv/
+ENV/
 
 # Environment variables
 .env
+.env.*
 
 # Git
-.git
+.git/
 .gitignore
 
 # IDE
-.idea
-.vscode
-.cursor
+.idea/
+.vscode/
+.cursor/
 
 # Documentation
 *.md
 README.md
+docs/
 
 # OS
 .DS_Store
@@ -46,8 +51,37 @@ build/
 dist/
 *.egg-info/
 
+# ========================================
+# SUPABASE MIGRATION - EXCLUDE CHROMADB
+# ========================================
 
-# IMPORTANT: Do NOT exclude these:
-# chroma_db/        <- We NEED this in the image
-# *.sqlite3         <- We NEED this for ChromaDB
-# data/combined.csv <- Exclude if large, but we don't need it at runtime
+# ChromaDB files (not needed - using Supabase)
+chroma_db/
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+
+# Data files (stored in Supabase, not needed in container)
+data/
+*.csv
+*.parquet
+
+# Backup files (not needed in production)
+backups/
+*.backup
+
+# Utility scripts (only for local dev)
+backup_supabase.py
+restore_supabase.py
+update_supabase_metadata.py
+populate_chroma.py
+build_and_export_embeddings.py
+chroma.py
+populate_supabase.py
+
+# Test scripts
+test_supabase.py
+test_supabase_simple.py
+test_full_agent.py
+main.py
+Curl_request

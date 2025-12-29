@@ -11,6 +11,7 @@ import logging
 import sys
 
 from src.agent.graph import create_agent_graph
+import config
 
 # Configure logging
 logging.basicConfig(
@@ -105,18 +106,6 @@ async def startup_event():
         
         logger.info("Step 1: Creating agent graph...")
         agent_graph = create_agent_graph()
-        
-        logger.info("Step 2: Validating ChromaDB contents...")
-        from src.enrichment.retrieval.chroma_client import ChromaClient
-        chroma = ChromaClient()
-        doc_count = chroma.collection.count()
-        
-        logger.info(f"✅ ChromaDB loaded successfully")
-        logger.info(f"✅ Total documents: {doc_count:,}")
-        
-        if doc_count == 0:
-            logger.error("❌ ChromaDB is empty (0 documents)")
-            raise ValueError("ChromaDB contains no documents - run build_and_export_embeddings.py first")
         
         logger.info("=" * 60)
         logger.info("🎉 API IS READY TO ACCEPT REQUESTS")
