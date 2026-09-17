@@ -307,11 +307,16 @@ def output_node(state: AgentState) -> Dict:
     # wants to distinguish "10 comps that are real matches" from "10 comps
     # that just cleared the filter" now can, without any existing field
     # changing meaning or value.
-    if scored_comparables:
-        result["avg_semantic_sim"] = round(
-            sum(c["semantic_sim"] for c in scored_comparables) / len(scored_comparables), 4
-        )
-        result["weak_match_count"] = sum(1 for c in scored_comparables if c.get("weak_match"))
+    #
+    # Always present (null/0 when there are no comparables), not left out —
+    # these are our own new fields, so there's no existing consumer whose
+    # behavior that changes, and a consumer checking `data["avg_semantic_sim"]`
+    # rather than `data.get(...)` shouldn't have to special-case zero results.
+    result["avg_semantic_sim"] = (
+        round(sum(c["semantic_sim"] for c in scored_comparables) / len(scored_comparables), 4)
+        if scored_comparables else None
+    )
+    result["weak_match_count"] = sum(1 for c in scored_comparables if c.get("weak_match"))
 
     # Include error info if it was mock data
     if error:
