@@ -177,12 +177,19 @@ def score_candidates(candidates: List[Dict], input_primary: str, input_secondary
             "recency": round(recency, 2),
             "score": round(score, 4),
             "desc_index": metadata.get("desc_index", 1),
-            "query_index": candidate.get("query_index", 0)
+            "query_index": candidate.get("query_index", 0),
+            # New field, added alongside the existing ones — nothing above is
+            # changed or removed. True when this match cleared the score
+            # threshold mostly on category/recency rather than real content
+            # similarity (see MIN_SEMANTIC_SIM in config.py). A consumer that
+            # doesn't read this field sees exactly the same comparables list,
+            # in the same count, as before.
+            "weak_match": semantic_sim < config.MIN_SEMANTIC_SIM,
 
         })
 
 
-    # Filter by threshold
+    # Filter by threshold — unchanged from before.
     scored = [c for c in scored if c["score"] >= config.MIN_SCORE_THRESHOLD]
 
     # Deduplicate by domain, keep highest score per domain

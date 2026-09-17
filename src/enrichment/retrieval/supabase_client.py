@@ -175,6 +175,15 @@ class SupabaseClient:
         result = self.cursor.fetchone()
         return result["count"] if result else 0
 
+    def ping(self) -> bool:
+        """Cheap DB-connectivity check for /health — not a table read, just
+        confirms the connection (or a reconnect via _execute) still works."""
+        try:
+            self._execute("SELECT 1")
+            return True
+        except Exception:
+            return False
+
     def close(self):
         """ Close  database connection """
         self.cursor.close()

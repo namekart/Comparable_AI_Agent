@@ -146,6 +146,17 @@ CHROMA_RESULTS_PER_QUERY = 50
 FINAL_TOP_K = 10
 MIN_SCORE_THRESHOLD = 0.4
 
+# Added 2026-09-17. Does NOT filter results — other apps consume this
+# service and its comparables count must not change under them. Used only to
+# add a "weak_match" flag to each comparable in scoring.py, so a consumer can
+# choose to filter/dim these, while everyone else keeps seeing the exact same
+# comparables list as before. distance-to-similarity compresses real scores
+# into roughly 0.42-0.56 (see scoring.py), so a candidate can already clear
+# MIN_SCORE_THRESHOLD (0.4) on category + recency alone with near-zero text
+# relevance — e.g. isotope.co's #1 match, sigma.io ($100,000), had similarity
+# 0.46 and no real connection to the domain, but a high category+recency score.
+MIN_SEMANTIC_SIM = 0.5
+
 # Minimum results threshold for unknown TLD fallback
 MIN_RESULTS_THRESHOLD = 10
 
