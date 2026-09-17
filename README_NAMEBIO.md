@@ -121,7 +121,8 @@ variables (set these in production — do **not** commit secrets):
 | `NAMEBIO_BASE_URL` | `https://namebio.vps4.auctionhacker.com` | NameBio API base |
 | `NAMEBIO_PAGE_SIZE` | `500` | page size for `/namebio/sales` |
 | `DOMAIN_EMBEDDINGS_TABLE` | `domain_embeddings` | vector table used by **both** search and ingest |
-| `DB_SEARCH_PATH` | `ai_worker, public` | set on every connection; needs the 5432 session pooler (6543 drops it) |
+| `DB_SEARCH_PATH` | `ai_worker, public` | set on every connection; only sticks on the 5432 pooler — on 6543 the stage role default (same value) applies |
+| `SUPABASE_PORT` | `5432` | **use `6543` on Hetzner** — it blocks outbound 5432 to Supabase poolers |
 | `HIGH_CONFIDENCE` / `MEDIUM_CONFIDENCE` / `LOW_CONFIDENCE` | `0.75` / `0.45` / `0.20` | routing bands |
 | `PREMIUM_PRICE_THRESHOLD` | `10000` | sale price forcing LLM enrichment |
 | `EMBED_BATCH_SIZE` | `256` | embed/flush chunk size (durability) |

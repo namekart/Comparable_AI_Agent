@@ -52,8 +52,9 @@ separate Supabase project. This app does not use it. The app also does not read
 ### `src/enrichment/namebio/db.py`
 - `connect()` runs `set_config('search_path', DB_SEARCH_PATH, false)` and
   commits it, so a later rollback cannot undo it.
-- **Requires the 5432 session pooler.** The 6543 transaction pooler does not
-  keep session settings.
+- The setting only sticks on the 5432 session pooler. The 6543 transaction
+  pooler does not keep session settings; there the stage `postgres` role's own
+  default (`ai_worker, public`) applies, which is the same value.
 
 ### `config.py`
 - New `DB_SEARCH_PATH` (default `ai_worker, public`).
@@ -117,7 +118,9 @@ returned 402 on every call. Free (`:free`) models still work. The key allows
 - `DOMAIN_EMBEDDINGS_TABLE` must be `domain_embeddings` (or unset). If it is
   still `domainvaluation1.domain_embeddings`, search will now read that table
   and break.
-- `SUPABASE_PORT` must be `5432`.
+- `SUPABASE_PORT` must be `6543` on Hetzner. Hetzner blocks outbound TCP 5432
+  to the Supabase poolers (both host and containers time out), so on 5432 the
+  app crash-loops at startup and the site returns 502. Login over 6543 works.
 - `DB_SEARCH_PATH` can stay unset (the default is `ai_worker, public`).
 
 ## Verification (local, 2026-09-17)
