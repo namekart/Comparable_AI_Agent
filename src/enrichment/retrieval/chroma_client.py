@@ -46,6 +46,8 @@ class ChromaClient:
                 "id": results["ids"][0][i],
                 "document": results["documents"][0][i],
                 "distance": results["distances"][0][i],
+                # Collection is in cosine space, so distance = 1 - cosine.
+                "cosine_similarity": 1 - results["distances"][0][i],
                 "metadata": results["metadatas"][0][i]
             })
 

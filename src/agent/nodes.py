@@ -294,8 +294,24 @@ def output_node(state: AgentState) -> Dict:
         "descriptions": descriptions,
         "comparables": scored_comparables,
         "total_comparables": len(scored_comparables),
-        "confidence": "high" if len(scored_comparables) >= 5 else "low"
+        "confidence": "high" if len(scored_comparables) >= 5 else "low",
     }
+
+    # Added 2026-09-17, alongside the fields above — none of which changed.
+    # "confidence" only ever counted comparables, never whether they're
+    # actually relevant: isotope.co returned 10 comparables, none related to
+    # the domain (top match sigma.io, similarity 0.46, matched on
+    # category+recency only — see weak_match in scoring.py), and still read
+    # "confidence": "high". avg_semantic_sim is a coarse relevance proxy, not
+    # a fix for the underlying corpus/threshold gaps — but a consumer that
+    # wants to distinguish "10 comps that are real matches" from "10 comps
+    # that just cleared the filter" now can, without any existing field
+    # changing meaning or value.
+    if scored_comparables:
+        result["avg_semantic_sim"] = round(
+            sum(c["semantic_sim"] for c in scored_comparables) / len(scored_comparables), 4
+        )
+        result["weak_match_count"] = sum(1 for c in scored_comparables if c.get("weak_match"))
 
     # Include error info if it was mock data
     if error:

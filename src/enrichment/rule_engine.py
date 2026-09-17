@@ -88,6 +88,12 @@ _COMMON_WORDS = {
     # energy / industry
     "energy", "solar", "power", "electric", "green", "eco", "water", "oil",
     "gas", "mining", "steel",
+    # science / biotech (added 2026-09-17 — see _INDUSTRY_TOKENS below;
+    # "pharma" already existed above in the health block)
+    "isotope", "isotopes", "biotech", "genome", "genomics",
+    "molecule", "molecular", "chemistry", "chemical", "radiopharma",
+    "radiology", "oncology", "diagnostic", "diagnostics", "clinical",
+    "research", "science", "scientific", "laboratory",
 }
 
 # Industry tokens -> (sector_keyword, category_hint). Presence of these in the
@@ -144,6 +150,34 @@ _INDUSTRY_TOKENS = {
     "edu": ("education", "Descriptive"),
     "food": ("food", "Descriptive"),
     "coffee": ("food", "Descriptive"),
+    # science / biotech (added 2026-09-17; "pharma" already existed above,
+    # unchanged). A domain like "isotope.co" previously had no industry token
+    # to match at all — it fell through to a bare Keyword/Brandable
+    # classification with no sector signal at all. category_hint is
+    # "Descriptive" — an existing category — deliberately, not a new
+    # "Scientific/Medical" value: this only makes the "science" sector name
+    # available for _describe()'s free-text description (which feeds
+    # semantic search) and as a keyword, without adding a category value
+    # that other apps consuming this service don't already expect.
+    "isotope": ("science", "Descriptive"),
+    "isotopes": ("science", "Descriptive"),
+    "biotech": ("science", "Descriptive"),
+    "genome": ("science", "Descriptive"),
+    "genomics": ("science", "Descriptive"),
+    "molecule": ("science", "Descriptive"),
+    "molecular": ("science", "Descriptive"),
+    "chemistry": ("science", "Descriptive"),
+    "chemical": ("science", "Descriptive"),
+    "radiopharma": ("science", "Descriptive"),
+    "radiology": ("science", "Descriptive"),
+    "oncology": ("science", "Descriptive"),
+    "diagnostic": ("science", "Descriptive"),
+    "diagnostics": ("science", "Descriptive"),
+    "clinical": ("science", "Descriptive"),
+    "research": ("science", "Descriptive"),
+    "science": ("science", "Descriptive"),
+    "scientific": ("science", "Descriptive"),
+    "laboratory": ("science", "Descriptive"),
 }
 
 # Vowels for pronounceability heuristics (brandable detection).

@@ -11,6 +11,7 @@ import logging
 import sys
 
 from src.agent.graph import create_agent_graph
+from src.agent.nodes import supabase_client
 import config
 
 # Configure logging
@@ -139,10 +140,22 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Detailed health check"""
+    # Added 2026-09-17: "status"/"agent_loaded"/"timestamp" below are
+    # untouched and compute exactly as before. This only adds "db_connected"
+    # — previously this endpoint could say "healthy" with a dead DB, because
+    # it never checked. Reuses the query connection nodes.py already holds
+    # open (via SupabaseClient._execute's reconnect-on-drop), so this doesn't
+    # open a second connection.
+    try:
+        db_connected = supabase_client.ping()
+    except Exception:
+        db_connected = False
+
     return {
         "status": "healthy",
         "agent_loaded": agent_graph is not None,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat(),
+        "db_connected": db_connected,
     }
 
 @app.post("/api/v1/search", response_model=DomainSearchResponse)
