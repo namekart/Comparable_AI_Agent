@@ -3,7 +3,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-LLM_MODEL = "openai/gpt-5.1"  # OpenRouter model format
+# OpenRouter model id. ":free" models cost nothing but are rate-limited
+# (daily cap per key, and can be busy upstream). Override via env.
+LLM_MODEL = os.getenv("LLM_MODEL", "nvidia/nemotron-3-super-120b-a12b:free")
+# Tried by OpenRouter, in order, when LLM_MODEL errors or is overloaded.
+LLM_FALLBACK_MODELS = [m.strip() for m in os.getenv(
+    "LLM_FALLBACK_MODELS", "z-ai/glm-5.2:free,google/gemma-4-31b-it:free").split(",") if m.strip()]
+# Free pools also fail transiently (even HTTP 200 with an error body), so retry.
+LLM_MAX_ATTEMPTS = int(os.getenv("LLM_MAX_ATTEMPTS", "3"))
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # OpenRouter model format
 
 

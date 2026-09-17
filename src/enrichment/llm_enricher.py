@@ -1,4 +1,5 @@
 import json
+import time
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 import config
@@ -11,7 +12,9 @@ class LLMEnricher:
             model=config.LLM_MODEL,
             temperature=0.05,
             api_key=config.OPENROUTER_API_KEY,
-            base_url="https://openrouter.ai/api/v1"  # OpenRouter API endpoint
+            base_url="https://openrouter.ai/api/v1",  # OpenRouter API endpoint
+            # OpenRouter's `models` list: falls through to the next model if one fails.
+            model_kwargs={"extra_body": {"models": [config.LLM_MODEL, *config.LLM_FALLBACK_MODELS]}},
         )
     def enrich_domain(self, domain_name:str,prompt_template:str)-> dict:
         """
@@ -36,7 +39,16 @@ class LLMEnricher:
             HumanMessage(content=prompt)
         ]
 
-        response = self.llm.invoke(messages)
+        # Free models intermittently fail (429/503, or HTTP 200 with an error
+        # body and no choices, which langchain surfaces as a TypeError).
+        for attempt in range(1, config.LLM_MAX_ATTEMPTS + 1):
+            try:
+                response = self.llm.invoke(messages)
+                break
+            except Exception:
+                if attempt == config.LLM_MAX_ATTEMPTS:
+                    raise
+                time.sleep(attempt)
 
         # Parse JSON Response
         try:

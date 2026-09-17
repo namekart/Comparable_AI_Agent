@@ -16,6 +16,8 @@ After these changes:
 - The search client reconnects if the pooler drops its connection.
 - Recency scoring works.
 - Existing NameBio rows on stage are de-duplicated and have `length` filled in.
+- LLM enrichment uses free OpenRouter models, with automatic fallback models
+  and retries, because the OpenRouter account balance is empty.
 
 ## Database this app uses
 
@@ -81,6 +83,23 @@ idempotent. The README records it as applied on stage on 2026-09-17.
    The embedder's delete and the LLM worker's lookup would otherwise scan the
    whole table.
 
+### `config.py` + `src/enrichment/llm_enricher.py`: free LLM models
+The OpenRouter account balance is empty, so the paid model (`openai/gpt-5.1`)
+returned 402 on every call. Free (`:free`) models still work. The key allows
+1,000 free-model requests per day, and one search normally uses one request.
+- `LLM_MODEL` is now read from the environment. The default is
+  `nvidia/nemotron-3-super-120b-a12b:free`.
+- New `LLM_FALLBACK_MODELS` (default `z-ai/glm-5.2:free,google/gemma-4-31b-it:free`).
+  These are sent as OpenRouter's `models` list, so OpenRouter tries the next
+  model when one is overloaded or rate-limited.
+- New `LLM_MAX_ATTEMPTS` (default 3). `enrich_domain()` retries the call.
+  Free providers sometimes return HTTP 200 with an error body and no
+  `choices`; `langchain-openai` 0.0.8 raises `TypeError` on that. Before this
+  change, about 1 in 3 calls failed that way.
+- The paid path still works: set `LLM_MODEL` (for example
+  `mistralai/mistral-nemo`, the cheapest paid model) once credits are added.
+- Free providers may log prompts. Only the domain name is sent.
+
 ### Docs and comments
 - `README_NAMEBIO.md`: stage schema layout, the `DB_SEARCH_PATH` row, and the
   new `DOMAIN_EMBEDDINGS_TABLE` default.
@@ -113,15 +132,39 @@ Ran `uvicorn api:app` from `.venv` (Python 3.11) against stage:
 | LLM enrichment (OpenRouter) | **Failed: 402**, account out of credits |
 | `POST /api/v1/search` response | `success: false`, because of the LLM failure above |
 
+After switching to free models with fallback and retry:
+
+| Domain | Result | Time | Categories |
+|---|---|---|---|
+| `onepay.ai` | `success: true`, 10 comparables | 18 s | Descriptive / Service-based |
+| `cloudchef.com` | `success: true`, 10 comparables | 19 s | Combination / Service-based |
+| `zenly.io` | `success: true`, 10 comparables | 27 s | Brandable / Combination |
+| `isotope.co` | `success: true`, 10 comparables | 25 s | Descriptive / Brandable |
+
+The cost was $0 for all four. Categories for the same domain can differ
+between runs, because the LLM output is not deterministic.
+
 ## Open issues / follow-ups
 
-1. **OpenRouter account balance is empty** (about −$0.20). Every search returns
-   `success: false` until credits are added.
-2. **No `max_tokens` on the LLM call** (`llm_enricher.py`). OpenRouter reserves
-   the model maximum (65,536 tokens) per request, so each call needs far more
-   balance than it uses. A cap of about 2,000 is enough for the JSON response.
+1. **OpenRouter account balance is empty** (about −$0.20). Searches run on free
+   models for now (see above). They are rate-limited and can be slow, 18–27 s
+   per search.
+2. **No `max_tokens` on the LLM call** (`llm_enricher.py`). This only matters
+   for paid models. OpenRouter reserves the model maximum (65,536 tokens) per
+   request, so each call needs far more balance than it uses. A cap of about
+   2,000 is enough for the JSON response.
 3. **An LLM failure fails the whole search.** `enrichment_node` falls back to
    placeholder descriptions, but `api.py` treats any `error` in state as
    failure and returns no data.
 4. **Rotate credentials.** The stage DB password and the OpenRouter key were
    shared in plain text while debugging.
+5. **Weak comparables still fill all 10 slots.** For `isotope.co`, the #1 match
+   was `sigma.io` ($100,000) at cosine similarity 0.35. The only link was
+   "SaaS platform + data analytics" in both descriptions. Causes:
+   - `MIN_SCORE_THRESHOLD = 0.4` filters almost nothing, because category plus
+     recency alone can reach 0.30–0.40.
+   - `1 / (1 + distance)` compresses similarity into roughly 0.45–0.55.
+   - Price outliers are not flagged.
+6. **Corpus freshness.** The newest sales returned were from Nov 2025. Check that
+   the daily NameBio ingest is running.
+7. **Junk sales in the corpus.** For example, `cloudsty.com` sold for $1.
