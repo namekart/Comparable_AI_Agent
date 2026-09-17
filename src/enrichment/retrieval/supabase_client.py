@@ -76,17 +76,18 @@ class SupabaseClient:
                     id,
                     content as document,
                     metadata,
-                    embedding <-> %s::vector as distance
+                    embedding <-> %s::vector as distance,
+                    1 - (embedding <=> %s::vector) as cosine_similarity
                 FROM {config.DOMAIN_EMBEDDINGS_TABLE}
                 WHERE {sql_where}
-                ORDER BY embedding <-> %s::vector
+                ORDER BY embedding <=> %s::vector
                 LIMIT %s;
             """
-            
+
             # Convert embedding list to PostgreSQL array string format
             embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
 
-            self._execute(sql, (embedding_str, embedding_str, n_results))
+            self._execute(sql, (embedding_str, embedding_str, embedding_str, n_results))
             rows = self.cursor.fetchall()
 
             # Convert to ChromaDB-compatible format
@@ -95,6 +96,7 @@ class SupabaseClient:
                     "id": str(row["id"]),
                     "document": row["document"],
                     "distance": float(row["distance"]),
+                    "cosine_similarity": float(row["cosine_similarity"]),
                     "metadata": row["metadata"]
                 })
 

@@ -149,12 +149,11 @@ MIN_SCORE_THRESHOLD = 0.4
 # Added 2026-09-17. Does NOT filter results — other apps consume this
 # service and its comparables count must not change under them. Used only to
 # add a "weak_match" flag to each comparable in scoring.py, so a consumer can
-# choose to filter/dim these, while everyone else keeps seeing the exact same
-# comparables list as before. distance-to-similarity compresses real scores
-# into roughly 0.42-0.56 (see scoring.py), so a candidate can already clear
-# MIN_SCORE_THRESHOLD (0.4) on category + recency alone with near-zero text
-# relevance — e.g. isotope.co's #1 match, sigma.io ($100,000), had similarity
-# 0.46 and no real connection to the domain, but a high category+recency score.
+# choose to filter/dim these. semantic_sim is cosine similarity (0-1). The old
+# 1/(1+L2) formula squeezed every candidate into ~0.42-0.47, so a match could
+# win on category + recency alone — e.g. isotope.co's #1, sigma.io ($100,000),
+# had no real connection to the domain. The 0.5 cut-off is the same point on
+# both scales: for unit vectors 1/(1+L2) = 0.5 exactly when cosine = 0.5.
 MIN_SEMANTIC_SIM = 0.5
 
 # Minimum results threshold for unknown TLD fallback
@@ -169,13 +168,17 @@ SCORE_WEIGHTS = {
     "recency": 0.2
 }
 
-# Recency decay (in days)
-RECENCY_BANDS = [
+# Recency weight by sale age in days: (days, weight) points, linearly
+# interpolated, flat before the first and after the last. Same levels as the
+# old step bands (<90 1.0, <180 0.9, <365 0.8, <730 0.6, else 0.3) but without
+# the cliffs: a sale 371 days old used to drop from 0.8 to 0.6 overnight and
+# lose to far less relevant sales a week younger (isomer.ai for isotope.co).
+RECENCY_CURVE = [
     (90, 1.0),
     (180, 0.9),
     (365, 0.8),
     (730, 0.6),
-    (float('inf'), 0.3)
+    (1095, 0.3),
 ]
 
 ENABLE_NUMERIC_FILTER = True

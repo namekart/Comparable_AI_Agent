@@ -74,14 +74,31 @@ def compute_recency_weight(sale_date: str) -> float:
     try:
         sale_dt = datetime.fromisoformat(sale_date.replace('Z', '+00:00'))
         days_old = (datetime.now(sale_dt.tzinfo)-sale_dt).days
-
-        for threshold, weight in config.RECENCY_BANDS:
-            if days_old < threshold:
-                return weight
-        
-        return 0.3
     except Exception:
         return 0.5
+
+    curve = config.RECENCY_CURVE
+    if days_old <= curve[0][0]:
+        return curve[0][1]
+    for (d0, w0), (d1, w1) in zip(curve, curve[1:]):
+        if days_old <= d1:
+            return w0 + (w1 - w0) * (days_old - d0) / (d1 - d0)
+    return curve[-1][1]
+
+
+def compute_semantic_similarity(candidate: Dict) -> float:
+    """
+    Cosine similarity (0-1) between the query and the candidate description.
+
+    Both retrieval clients return `cosine_similarity`. The fallback derives it
+    from L2 distance, valid because every stored and query vector is unit
+    length (all-MiniLM-L6-v2 normalizes): cosine = 1 - L2^2 / 2.
+    """
+    cos = candidate.get("cosine_similarity")
+    if cos is None:
+        distance = candidate.get("distance", 0)
+        cos = 1 - (distance * distance) / 2
+    return max(0.0, min(1.0, float(cos)))
 
 def score_candidates(candidates: List[Dict], input_primary: str, input_secondary: str, input_tld:str) -> List[Dict]:
     """ Score and rank all candidates using hybrid strategy.
@@ -138,12 +155,10 @@ def score_candidates(candidates: List[Dict], input_primary: str, input_secondary
                         if len(desc_part) > 1:
                             description = desc_part[1].lstrip(": .").strip()
 
-        # Convert distance to similarity(Chroma uses L2 distance)
-        # For cosine distance: similarity = 1- distance
-        # For L2: similarity = 1 / (1+distance)
-
-        distance = candidate.get("distance", 0)
-        semantic_sim = 1 / (1+distance) if distance >= 0 else 0.5
+        # Cosine similarity, not 1/(1+L2): that squeezed every candidate into
+        # ~0.42-0.47, so meaning moved the score by ~0.005 while one recency
+        # step moved it by 0.04 and the best-fitting sales lost.
+        semantic_sim = compute_semantic_similarity(candidate)
 
         # Category match
         cat_match = compute_category_match(

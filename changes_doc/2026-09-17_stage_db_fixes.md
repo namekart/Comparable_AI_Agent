@@ -101,6 +101,40 @@ returned 402 on every call. Free (`:free`) models still work. The key allows
   `mistralai/mistral-nemo`, the cheapest paid model) once credits are added.
 - Free providers may log prompts. Only the domain name is sent.
 
+### Scoring: meaning first (`scoring.py`, `supabase_client.py`, `config.py`)
+- `semantic_sim` is now **cosine similarity**. The search SQL returns
+  `1 - (embedding <=> query)` and orders by `<=>`. Candidate order is unchanged,
+  because all vectors are unit length. The old `1 / (1 + L2)` put every
+  candidate at roughly 0.42–0.47. Meaning then moved a score by ~0.005, while
+  one recency step moved it by 0.04, so the best-fitting sales lost.
+- Recency is **interpolated** between the old band levels (`RECENCY_CURVE`),
+  replacing `RECENCY_BANDS`. A sale 371 days old used to drop from 0.8 to 0.6
+  overnight; now it gets 0.797.
+- `MIN_SEMANTIC_SIM` (`weak_match`) keeps 0.5: for unit vectors 1/(1+L2) = 0.5
+  exactly when cosine = 0.5. Weights, `MIN_SCORE_THRESHOLD`, top-K and response
+  fields are unchanged.
+
+Old vs new on the same retrieved candidates (stage, 11 live enrichments):
+
+| Domain | Count old → new | Same domains | Avg cosine old → new | Weak old → new |
+|---|---|---|---|---|
+| 42go.com | 10 → 10 | 1 | 0.521 → 0.584 | 1 → 0 |
+| centurio.ai | 10 → 10 | 6 | 0.583 → 0.631 | 2 → 0 |
+| cloudkitchen.io | 10 → 10 | 9 | 0.371 → 0.377 | 9 → 9 |
+| genomics.io | 9 → 9 | 9 | 0.235 → 0.235 | 9 → 9 |
+| isotope.co | 10 → 10 | 7 | 0.340 → 0.365 | 10 → 10 |
+| lawfirm.com | 10 → 10 | 8 | 0.500 → 0.553 | 5 → 3 |
+| mortgagebroker.com | 10 → 10 | 7 | 0.500 → 0.523 | 4 → 2 |
+| onepay.ai | 10 → 10 | 4 | 0.591 → 0.644 | 0 → 0 |
+| petfood.shop | 10 → 10 | 7 | 0.404 → 0.419 | 10 → 10 |
+| pharmaco.com | 10 → 10 | 6 | 0.547 → 0.578 | 2 → 1 |
+| zenith.ai | 10 → 10 | 5 | 0.629 → 0.655 | 0 → 0 |
+
+For example, `onepay.ai` now leads with paid.ai, payper.ai, trustpay.ai and
+zhifu.ai (cosine 0.64–0.72) instead of insura/term/told/automed. Domains that
+stay weak (`isotope.co`, `genomics.io`, `petfood.shop`) have no close sales in
+the corpus. Scoring cannot fix that; more ingested sales can.
+
 ### Docs and comments
 - `README_NAMEBIO.md`: stage schema layout, the `DB_SEARCH_PATH` row, and the
   new `DOMAIN_EMBEDDINGS_TABLE` default.
@@ -161,7 +195,9 @@ between runs, because the LLM output is not deterministic.
    failure and returns no data.
 4. **Rotate credentials.** The stage DB password and the OpenRouter key were
    shared in plain text while debugging.
-5. **Weak comparables still fill all 10 slots.** For `isotope.co`, the #1 match
+5. **Weak comparables still fill all 10 slots.** (Similarity compression and
+   recency cliffs fixed in "Scoring: meaning first"; the threshold, price
+   outliers and thin corpus remain.) For `isotope.co`, the #1 match
    was `sigma.io` ($100,000) at cosine similarity 0.35. The only link was
    "SaaS platform + data analytics" in both descriptions. Causes:
    - `MIN_SCORE_THRESHOLD = 0.4` filters almost nothing, because category plus
