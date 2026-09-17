@@ -3,7 +3,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-LLM_MODEL = "openai/gpt-5.1"  # OpenRouter model format
+# OpenRouter model id. ":free" models cost nothing but are rate-limited
+# (daily cap per key, and can be busy upstream). Override via env.
+LLM_MODEL = os.getenv("LLM_MODEL", "nvidia/nemotron-3-super-120b-a12b:free")
+# Tried by OpenRouter, in order, when LLM_MODEL errors or is overloaded.
+LLM_FALLBACK_MODELS = [m.strip() for m in os.getenv(
+    "LLM_FALLBACK_MODELS", "z-ai/glm-5.2:free,google/gemma-4-31b-it:free").split(",") if m.strip()]
+# Free pools also fail transiently (even HTTP 200 with an error body), so retry.
+LLM_MAX_ATTEMPTS = int(os.getenv("LLM_MAX_ATTEMPTS", "3"))
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # OpenRouter model format
 
 
@@ -12,6 +19,11 @@ SUPABASE_PORT = os.getenv("SUPABASE_PORT", "5432")
 SUPABASE_DB = os.getenv("SUPABASE_DB", "postgres")
 SUPABASE_USER = os.getenv("SUPABASE_USER", "postgres")
 SUPABASE_PASSWORD = os.getenv("SUPABASE_PASSWORD")
+
+# Set on every connection so unqualified table names resolve the same way no
+# matter what the DB role defaults to. On stage the enrichment tables live in
+# ai_worker and the vector corpus in public.
+DB_SEARCH_PATH = os.getenv("DB_SEARCH_PATH", "ai_worker, public")
 
 
 
@@ -169,8 +181,9 @@ NAMEBIO_BASE_URL = os.getenv("NAMEBIO_BASE_URL", "https://namebio.vps4.auctionha
 # Page size when paging through NameBio /namebio/sales for a given date.
 NAMEBIO_PAGE_SIZE = int(os.getenv("NAMEBIO_PAGE_SIZE", "500"))
 
-# Schema-qualified vector table (existing corpus, vector(384)).
-DOMAIN_EMBEDDINGS_TABLE = os.getenv("DOMAIN_EMBEDDINGS_TABLE", "domainvaluation1.domain_embeddings")
+# Vector table (vector(384)) shared by search (SupabaseClient) and NameBio ingest.
+# Unqualified so it resolves via search_path, same as the original corpus scripts.
+DOMAIN_EMBEDDINGS_TABLE = os.getenv("DOMAIN_EMBEDDINGS_TABLE", "domain_embeddings")
 
 # Confidence bands for routing rule-engine output (information-theory routing):
 #   >= HIGH            -> accept rule result, embed now

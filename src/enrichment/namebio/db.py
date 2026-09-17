@@ -27,6 +27,13 @@ def connect():
         password=config.SUPABASE_PASSWORD,
         cursor_factory=RealDictCursor,
     )
+    # Pin table resolution (committed, so a later rollback can't undo it).
+    # Only sticks on the session pooler (5432). On the 6543 transaction pooler
+    # (what Hetzner uses: it blocks outbound 5432) the role default applies
+    # instead, which on stage is already `ai_worker, public`.
+    with conn.cursor() as cur:
+        cur.execute("SELECT set_config('search_path', %s, false)", (config.DB_SEARCH_PATH,))
+    conn.commit()
     return conn
 
 

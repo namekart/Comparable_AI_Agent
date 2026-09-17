@@ -3,7 +3,7 @@
 -- NameBio -> Comparable AI Agent integration schema.
 --
 -- Apply manually (Supabase SQL editor or psql). NOT auto-run by the app.
--- Lives alongside the existing vector table `domainvaluation1.domain_embeddings`
+-- Lives alongside the existing vector table `domain_embeddings`
 -- (embedding vector(384)) which is NOT modified here.
 --
 -- Tables:

@@ -61,7 +61,7 @@ def compute_tld_match(candidate_tld: str, input_tld: str) -> float:
     return 0.0
 
 
-def compute_recency_weight(sale_data: str) -> float:
+def compute_recency_weight(sale_date: str) -> float:
     """
     Compute recency weight based on sale data.
 

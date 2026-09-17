@@ -1,10 +1,10 @@
 import psycopg2
-from psycopg2.extras import RealDictCursor
 from sentence_transformers import SentenceTransformer
 from typing import List, Dict
 import config
 import json
 import tldextract
+from src.enrichment.namebio import db
 
 class SupabaseClient:
     """ Wrapper for Supabase/ PostgreSQL vector operations(pgvector)"""
@@ -12,18 +12,23 @@ class SupabaseClient:
         # Initialize embedding model 
         self.embeddings = SentenceTransformer(config.EMBEDDING_MODEL)
 
-        # Connect to SupaBase PostgreSQL
-        self.conn = psycopg2.connect(
-            host=config.SUPABASE_HOST,
-            port=config.SUPABASE_PORT,
-            database=config.SUPABASE_DB,
-            user=config.SUPABASE_USER,
-            password=config.SUPABASE_PASSWORD,
-            cursor_factory = RealDictCursor
-        )
+        self._connect()
+        print(f" Connected to SupaBase PostgreSQL")
+
+    def _connect(self):
+        # Autocommit: this connection lives for the whole API process, and a
+        # single failed read must not leave it stuck in an aborted transaction.
+        self.conn = db.connect()
+        self.conn.autocommit = True
         self.cursor = self.conn.cursor()
 
-        print(f" Connected to SupaBase PostgreSQL")
+    def _execute(self, sql, params=None):
+        """Execute, reconnecting once if the pooler dropped the connection."""
+        try:
+            self.cursor.execute(sql, params)
+        except (psycopg2.OperationalError, psycopg2.InterfaceError):
+            self._connect()
+            self.cursor.execute(sql, params)
 
     def _enrich_metadata(self, metadata: Dict) -> Dict:
         """
@@ -72,7 +77,7 @@ class SupabaseClient:
                     content as document,
                     metadata,
                     embedding <-> %s::vector as distance
-                FROM domain_embeddings
+                FROM {config.DOMAIN_EMBEDDINGS_TABLE}
                 WHERE {sql_where}
                 ORDER BY embedding <-> %s::vector
                 LIMIT %s;
@@ -81,7 +86,7 @@ class SupabaseClient:
             # Convert embedding list to PostgreSQL array string format
             embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
 
-            self.cursor.execute(sql, (embedding_str, embedding_str, n_results))
+            self._execute(sql, (embedding_str, embedding_str, n_results))
             rows = self.cursor.fetchall()
 
             # Convert to ChromaDB-compatible format
@@ -166,7 +171,7 @@ class SupabaseClient:
 
     def count(self) -> int:
         """ Return total number of documents in collection """
-        self.cursor.execute("SELECT COUNT(*) as count FROM domain_embeddings")
+        self._execute(f"SELECT COUNT(*) as count FROM {config.DOMAIN_EMBEDDINGS_TABLE}")
         result = self.cursor.fetchone()
         return result["count"] if result else 0
 
