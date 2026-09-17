@@ -67,6 +67,14 @@ Tables written (see [`sql/001_namebio_integration.sql`](sql/001_namebio_integrat
 - **`domain_embeddings`** — *existing* table; new NameBio rows are tagged
   `metadata.source = 'rule' | 'llm'` (so they're identifiable and removable)
 
+On the name.ai **stage** DB (`mxiwrzfxutzchjlrljxg`) the first three live in
+schema `ai_worker` and the corpus the agent searches is `public.domain_embeddings`
+(`domainvaluation1.domain_embeddings` is a different shape — no `content`/`id` —
+and does not work with this app). Every connection sets
+`search_path = DB_SEARCH_PATH` so unqualified names resolve there.
+[`sql/002_stage_data_fixes.sql`](sql/002_stage_data_fixes.sql) removed duplicate
+NameBio vectors and filled their missing `length` (applied on stage 2026-09-17).
+
 ---
 
 ## 3. Files
@@ -112,7 +120,8 @@ variables (set these in production — do **not** commit secrets):
 |---------|---------|---------|
 | `NAMEBIO_BASE_URL` | `https://namebio.vps4.auctionhacker.com` | NameBio API base |
 | `NAMEBIO_PAGE_SIZE` | `500` | page size for `/namebio/sales` |
-| `DOMAIN_EMBEDDINGS_TABLE` | `domainvaluation1.domain_embeddings` | **set to `domain_embeddings`** if that's how your DB resolves it |
+| `DOMAIN_EMBEDDINGS_TABLE` | `domain_embeddings` | vector table used by **both** search and ingest |
+| `DB_SEARCH_PATH` | `ai_worker, public` | set on every connection; needs the 5432 session pooler (6543 drops it) |
 | `HIGH_CONFIDENCE` / `MEDIUM_CONFIDENCE` / `LOW_CONFIDENCE` | `0.75` / `0.45` / `0.20` | routing bands |
 | `PREMIUM_PRICE_THRESHOLD` | `10000` | sale price forcing LLM enrichment |
 | `EMBED_BATCH_SIZE` | `256` | embed/flush chunk size (durability) |

@@ -20,6 +20,7 @@ from typing import Dict, List, Optional
 
 import config
 from src.enrichment import rule_engine
+from src.enrichment.domain_parser import parse_domain
 from src.enrichment.namebio import db
 from src.enrichment.namebio.client import NamebioClient
 from src.enrichment.namebio.embedder import Embedder
@@ -149,6 +150,13 @@ class Ingestor:
         """Merge enrichment + representative-sale fields for the embedder."""
         length = (enriched or {}).get("length")
         has_numbers = (enriched or {}).get("has_numbers")
+        # Cache hits have no rule-engine output and domain_enrichment has no
+        # length column; without this the vector gets length=null and the
+        # search length filter never matches it.
+        if length is None or has_numbers is None:
+            parsed = parse_domain(record["domain"])
+            length = parsed["length"] if length is None else length
+            has_numbers = parsed["has_numbers"] if has_numbers is None else has_numbers
         return {
             "domain": record["domain"],
             "tld": record.get("tld"),

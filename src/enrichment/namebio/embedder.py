@@ -6,7 +6,7 @@ Embedding builder + upserter for ingested NameBio domains.
   description extractor in scoring.py keeps working.
 - Embedder.embed_and_upsert(rows): batch-encodes finalized enrichment rows
   with all-MiniLM-L6-v2 (384-dim, matching the live vector(384) column) and
-  upserts one vector PER DESCRIPTION into domainvaluation1.domain_embeddings,
+  upserts one vector PER DESCRIPTION into config.DOMAIN_EMBEDDINGS_TABLE,
   keyed `domain__descN` for idempotency.
 
 Only FINALIZED content reaches here (status enriched_rule / enriched_llm) —

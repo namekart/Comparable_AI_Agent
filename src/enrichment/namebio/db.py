@@ -27,6 +27,11 @@ def connect():
         password=config.SUPABASE_PASSWORD,
         cursor_factory=RealDictCursor,
     )
+    # Pin table resolution (committed, so a later rollback can't undo it).
+    # Needs the session pooler (5432); the 6543 transaction pooler drops SETs.
+    with conn.cursor() as cur:
+        cur.execute("SELECT set_config('search_path', %s, false)", (config.DB_SEARCH_PATH,))
+    conn.commit()
     return conn
 
 

@@ -13,6 +13,11 @@ SUPABASE_DB = os.getenv("SUPABASE_DB", "postgres")
 SUPABASE_USER = os.getenv("SUPABASE_USER", "postgres")
 SUPABASE_PASSWORD = os.getenv("SUPABASE_PASSWORD")
 
+# Set on every connection so unqualified table names resolve the same way no
+# matter what the DB role defaults to. On stage the enrichment tables live in
+# ai_worker and the vector corpus in public.
+DB_SEARCH_PATH = os.getenv("DB_SEARCH_PATH", "ai_worker, public")
+
 
 
 # # ChromaDB Configuration
@@ -169,8 +174,9 @@ NAMEBIO_BASE_URL = os.getenv("NAMEBIO_BASE_URL", "https://namebio.vps4.auctionha
 # Page size when paging through NameBio /namebio/sales for a given date.
 NAMEBIO_PAGE_SIZE = int(os.getenv("NAMEBIO_PAGE_SIZE", "500"))
 
-# Schema-qualified vector table (existing corpus, vector(384)).
-DOMAIN_EMBEDDINGS_TABLE = os.getenv("DOMAIN_EMBEDDINGS_TABLE", "domainvaluation1.domain_embeddings")
+# Vector table (vector(384)) shared by search (SupabaseClient) and NameBio ingest.
+# Unqualified so it resolves via search_path, same as the original corpus scripts.
+DOMAIN_EMBEDDINGS_TABLE = os.getenv("DOMAIN_EMBEDDINGS_TABLE", "domain_embeddings")
 
 # Confidence bands for routing rule-engine output (information-theory routing):
 #   >= HIGH            -> accept rule result, embed now
