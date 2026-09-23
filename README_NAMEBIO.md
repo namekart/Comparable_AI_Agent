@@ -1,6 +1,6 @@
 # NameBio → Comparable Agent Integration
 
-Ingests historical domain sales from the **NameBio microservice** into the
+Ingests historical domain sales from the **NameBio service's sales table** into the
 Comparable Agent's vector corpus, so the agent can return real sold-domain
 comparables. Designed to scale to **~883k sales (3–4k/day)** without an
 unaffordable LLM-per-domain backfill.
@@ -16,10 +16,10 @@ enrichment is cached **permanently and versioned**, so each expensive
 computation happens at most once.
 
 ```
-                          NameBio REST API  (read-only)
-                                  │  /namebio/sales?date=…  (paginated)
+                  namebio.namebio_sale  (read-only, same DB)
+                                  │  WHERE sale_date = …
                                   ▼
-                  map saleDate→date, marketplace→platform
+                  map sale_date→date, marketplace→platform
                                   ▼
                   dedupe by DOMAIN (enrich once, reuse for all its sales)
                                   ▼
@@ -56,8 +56,12 @@ the wasteful rule→embed→llm→re-embed double cost.
 
 | System | Role | Access |
 |--------|------|--------|
-| **NameBio microservice** (`https://namebio.vps4.auctionhacker.com`) | source of sales | **READ-ONLY** (REST) |
-| **Supabase Postgres** (the agent's DB) | vector corpus + ingest state | **WRITES** |
+| **`namebio.namebio_sale`** (written by the NameBio service's daily cron, ~08:00) | source of sales | **READ-ONLY** |
+| **`comparable.*`** | vector corpus + ingest state | **WRITES** |
+
+Both schemas live in the shared Hetzner Supabase Postgres
+(`supabase.h.namekart.com`, Tailscale `100.74.166.27:54322`), created by
+[`sql/003_hetzner_shared_db.sql`](sql/003_hetzner_shared_db.sql).
 
 Tables written (see [`sql/001_namebio_integration.sql`](sql/001_namebio_integration.sql)):
 
@@ -67,13 +71,14 @@ Tables written (see [`sql/001_namebio_integration.sql`](sql/001_namebio_integrat
 - **`domain_embeddings`** — *existing* table; new NameBio rows are tagged
   `metadata.source = 'rule' | 'llm'` (so they're identifiable and removable)
 
-On the name.ai **stage** DB (`mxiwrzfxutzchjlrljxg`) the first three live in
-schema `ai_worker` and the corpus the agent searches is `public.domain_embeddings`
-(`domainvaluation1.domain_embeddings` is a different shape — no `content`/`id` —
-and does not work with this app). Every connection sets
-`search_path = DB_SEARCH_PATH` so unqualified names resolve there.
-[`sql/002_stage_data_fixes.sql`](sql/002_stage_data_fixes.sql) removed duplicate
-NameBio vectors and filled their missing `length` (applied on stage 2026-09-17).
+All four live in schema `comparable`. Every connection sets
+`search_path = DB_SEARCH_PATH` (`comparable, public`) so unqualified names
+resolve there. `domainvaluation1.domain_embeddings` on the same DB is a
+different shape — no `content`/`id` — and does not work with this app.
+
+Before 2026-09-23 these tables lived on the name.ai stage Supabase Cloud project
+(`mxiwrzfxutzchjlrljxg`, schemas `ai_worker` + `public`), where
+[`sql/002_stage_data_fixes.sql`](sql/002_stage_data_fixes.sql) was applied.
 
 ---
 
@@ -85,7 +90,7 @@ src/enrichment/rule_engine.py            # deterministic categorizer + tokenizer
 src/enrichment/namebio/
   __init__.py
   db.py                                  # shared Supabase connection helper
-  client.py                              # NameBio REST client (retry/backoff, field mapping)
+  sales_source.py                        # reads a day's sales from namebio.namebio_sale
   enrichment_cache.py                    # domain_enrichment CRUD (versioned)
   queue.py                               # llm_enrichment_queue CRUD
   routing.py                             # pure confidence-band routing decision
@@ -118,11 +123,10 @@ variables (set these in production — do **not** commit secrets):
 
 | Env var | Default | Meaning |
 |---------|---------|---------|
-| `NAMEBIO_BASE_URL` | `https://namebio.vps4.auctionhacker.com` | NameBio API base |
-| `NAMEBIO_PAGE_SIZE` | `500` | page size for `/namebio/sales` |
+| `NAMEBIO_SALES_TABLE` | `namebio.namebio_sale` | NameBio's sales table (read-only) |
 | `DOMAIN_EMBEDDINGS_TABLE` | `domain_embeddings` | vector table used by **both** search and ingest |
-| `DB_SEARCH_PATH` | `ai_worker, public` | set on every connection; only sticks on the 5432 pooler — on 6543 the stage role default (same value) applies |
-| `SUPABASE_PORT` | `5432` | **use `6543` on Hetzner** — it blocks outbound 5432 to Supabase poolers |
+| `DB_SEARCH_PATH` | `comparable, public` | set on every connection (needs a session-level connection, e.g. direct Postgres) |
+| `SUPABASE_HOST` / `SUPABASE_PORT` | — / `5432` | Hetzner: `100.74.166.27` / `54322` (direct Postgres over Tailscale) |
 | `HIGH_CONFIDENCE` / `MEDIUM_CONFIDENCE` / `LOW_CONFIDENCE` | `0.75` / `0.45` / `0.20` | routing bands |
 | `PREMIUM_PRICE_THRESHOLD` | `10000` | sale price forcing LLM enrichment |
 | `EMBED_BATCH_SIZE` | `256` | embed/flush chunk size (durability) |
@@ -151,7 +155,7 @@ python -c "from src.enrichment.namebio import db; \
 
 # 3. Set env (.env locally, Coolify in prod). Minimum:
 #    SUPABASE_HOST/PORT/DB/USER/PASSWORD, OPENROUTER_API_KEY,
-#    NAMEBIO_BASE_URL, DOMAIN_EMBEDDINGS_TABLE=domain_embeddings
+#    DB_SEARCH_PATH=comparable,public, DOMAIN_EMBEDDINGS_TABLE=domain_embeddings
 ```
 
 ---

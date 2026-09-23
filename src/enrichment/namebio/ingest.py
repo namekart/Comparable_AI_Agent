@@ -1,7 +1,7 @@
 """
 NameBio -> Comparable Agent ingest orchestrator.
 
-Pulls sales from the NameBio microservice per date, dedupes by domain
+Reads sales per date from NameBio's table in the shared DB, dedupes by domain
 (enrich once per domain, reuse across all its sales), routes each domain by
 information content (rule confidence + premium price) into either an
 immediately-embedded rule enrichment or a queued LLM upgrade, embeds ONLY
@@ -22,11 +22,11 @@ import config
 from src.enrichment import rule_engine
 from src.enrichment.domain_parser import parse_domain
 from src.enrichment.namebio import db
-from src.enrichment.namebio.client import NamebioClient
 from src.enrichment.namebio.embedder import Embedder
 from src.enrichment.namebio.enrichment_cache import EnrichmentCache
 from src.enrichment.namebio.queue import LLMQueue
 from src.enrichment.namebio.routing import decide
+from src.enrichment.namebio.sales_source import NamebioSalesSource
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,7 +38,7 @@ logger = logging.getLogger("namebio.ingest")
 class Ingestor:
     def __init__(self, client=None, cache=None, queue=None, embedder=None, conn=None):
         self.conn = conn or db.connect()
-        self.client = client or NamebioClient()
+        self.client = client or NamebioSalesSource(conn=self.conn)
         self.cache = cache or EnrichmentCache(conn=self.conn)
         self.queue = queue or LLMQueue(conn=self.conn)
         self.embedder = embedder or Embedder(conn=self.conn)
@@ -48,8 +48,8 @@ class Ingestor:
     # ------------------------------------------------------------------ #
     def ingest_date(self, day: date) -> Dict[str, int]:
         """
-        Ingest one date. Isolated: raises only on unexpected programming errors;
-        HTTP failures bubble up so the caller can decide whether to skip.
+        Ingest one date. DB failures bubble up so the caller can decide
+        whether to skip.
         Returns a stats dict.
         """
         sales = self.client.get_sales_for_date(day)
