@@ -124,6 +124,7 @@ variables (set these in production — do **not** commit secrets):
 | Env var | Default | Meaning |
 |---------|---------|---------|
 | `NAMEBIO_SALES_TABLE` | `namebio.namebio_sale` | NameBio's sales table (read-only) |
+| `DAILY_INGEST_CRON` | `0 9 * * *` | in-app daily ingest schedule (UTC); empty disables it — set empty for a local API pointed at the production DB |
 | `DOMAIN_EMBEDDINGS_TABLE` | `domain_embeddings` | vector table used by **both** search and ingest |
 | `DB_SEARCH_PATH` | `comparable, public` | set on every connection (needs a session-level connection, e.g. direct Postgres) |
 | `SUPABASE_HOST` / `SUPABASE_PORT` | — / `5432` | Hetzner: `100.74.166.27` / `54322` (direct Postgres over Tailscale) |
@@ -166,7 +167,11 @@ python -c "from src.enrichment.namebio import db; \
 # One-time historical backfill (resumable — safe to stop/restart):
 python -m src.enrichment.namebio.ingest --backfill --from 2024-01-01 --to 2026-06-18
 
-# Daily incremental (cron; pulls yesterday, mirrors NameBio's own daily job):
+# Daily incremental: runs automatically inside the API process at
+# DAILY_INGEST_CRON (09:00 UTC, an hour after NameBio's 08:00 fetch) — see
+# src/enrichment/namebio/scheduler.py. It catches up days missed while the app
+# was down (up to 7) and waits for days NameBio hasn't written yet.
+# Manual equivalent for one day:
 python -m src.enrichment.namebio.ingest --daily
 
 # Background LLM worker — drains the queue (LLM enrich + re-embed):

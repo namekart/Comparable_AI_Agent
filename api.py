@@ -12,6 +12,7 @@ import sys
 
 from src.agent.graph import create_agent_graph
 from src.agent.nodes import supabase_client
+from src.enrichment.namebio import scheduler as namebio_scheduler
 import config
 
 # Configure logging
@@ -107,7 +108,9 @@ async def startup_event():
         
         logger.info("Step 1: Creating agent graph...")
         agent_graph = create_agent_graph()
-        
+
+        namebio_scheduler.start()
+
         logger.info("=" * 60)
         logger.info("🎉 API IS READY TO ACCEPT REQUESTS")
         logger.info(f"🔗 Access at: http://localhost:8000")
@@ -123,6 +126,12 @@ async def startup_event():
         import traceback
         logger.error(traceback.format_exc())
         raise
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    namebio_scheduler.shutdown()
+
 # API Endpoints
 
 
