@@ -107,9 +107,8 @@ class Ingestor:
             existing = cached.get(d)
             # Cache hit and not stale -> reuse; only (re)embed if missing.
             if existing and not self.cache.is_stale(existing):
-                if not existing.get("embedded") and existing.get("status") in (
-                    "enriched_rule", "enriched_llm"
-                ):
+                # Only LLM-described rows are embedded; rule-only rows wait for the LLM.
+                if not existing.get("embedded") and existing.get("status") == "enriched_llm":
                     rows_to_embed.append(self._embed_row(existing, sale_meta[d]))
                     if len(rows_to_embed) >= config.EMBED_BATCH_SIZE:
                         flush_embeds()
