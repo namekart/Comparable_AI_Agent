@@ -133,7 +133,10 @@ variables (set these in production — do **not** commit secrets):
 | `EMBED_BATCH_SIZE` | `256` | embed/flush chunk size (durability) |
 | `CURRENT_ENRICHMENT_VERSION` / `CURRENT_EMBEDDING_VERSION` | `1` / `1` | bump to selectively refresh stale rows |
 | `SUPABASE_*` | — | existing DB credentials |
-| `OPENROUTER_API_KEY` | — | LLM key (worker only) |
+| `LLM_BASE_URL` / `LLM_API_KEY` | OpenRouter / `OPENROUTER_API_KEY` | OpenAI-compatible endpoint and key for domain descriptions (worker and query-time enrichment) |
+| `LLM_MODEL` | `nvidia/nemotron-3-super-120b-a12b:free` | model id at that endpoint (prod: CodeCraft `deepseek-v4-flash-0731`, ~$0.0002/domain, no daily cap; OpenRouter `:free` models stop at 1,000 requests/day) |
+| `DAILY_LLM_WORKERS` | `12` | parallel LLM workers the daily ingest runs right after ingesting; 0 disables |
+| `OPENROUTER_API_KEY` | — | LLM key when `LLM_API_KEY` is not set |
 
 > **Versioning:** to refresh enrichments after improving the rule engine, bump
 > `CURRENT_ENRICHMENT_VERSION` and re-run — only rows with
@@ -177,6 +180,11 @@ python -m src.enrichment.namebio.ingest --daily
 # Background LLM worker — drains the queue (LLM enrich + re-embed):
 python -m src.enrichment.namebio.llm_worker            # drain until empty
 python -m src.enrichment.namebio.llm_worker --max 50   # cap (good for cost control)
+python -m src.enrichment.namebio.llm_worker --workers 16 --min-priority 25   # parallel, $5k+ tier only
+
+# Queue every domain with a sale >= $5k that has no vector yet for LLM descriptions
+# (domains that already have vectors are skipped, never replaced):
+python -m src.enrichment.namebio.ingest --enqueue-tier --min-price 5000
 ```
 
 The backfill is **idempotent** (re-running skips already-enriched domains) and

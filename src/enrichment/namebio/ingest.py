@@ -74,6 +74,8 @@ class Ingestor:
         stats["cache_hits"] = len(cached)
 
         rows_to_embed: List[Dict] = []
+        pending_records: List[Dict] = []
+        pending_queue_items: List = []
 
         def flush_embeds():
             """Embed accumulated rows and mark them embedded. Called in chunks
@@ -82,10 +84,24 @@ class Ingestor:
             if not rows_to_embed:
                 return
             n = self.embedder.embed_and_upsert(rows_to_embed)
-            for r in rows_to_embed:
-                self.cache.mark_embedded(r["domain"])
+            self.cache.mark_embedded_many([r["domain"] for r in rows_to_embed])
             stats["embedded_vectors"] += n
             rows_to_embed.clear()
+
+        def flush_records():
+            """Batch-upsert accumulated domain_enrichment records: one round
+            trip per chunk instead of one per domain (was the ingest
+            bottleneck: ~600ms/statement over a remote pooler)."""
+            if not pending_records:
+                return
+            self.cache.upsert_many(pending_records)
+            pending_records.clear()
+
+        def flush_queue():
+            if not pending_queue_items:
+                return
+            self.queue.enqueue_many(pending_queue_items)
+            pending_queue_items.clear()
 
         for d in domains:
             existing = cached.get(d)
@@ -119,13 +135,18 @@ class Ingestor:
                 "queue_reason": decision.queue_reason,
                 "embedded": False,
             }
-            self.cache.upsert(record)
+            pending_records.append(record)
+            if len(pending_records) >= config.DB_BATCH_SIZE:
+                flush_records()
+
             stats[decision.status] += 1
             if decision.queue_reason:
                 stats[f"queue:{decision.queue_reason}"] += 1
 
             if decision.enqueue:
-                self.queue.enqueue(d, decision.queue_reason)
+                pending_queue_items.append((d, decision.queue_reason))
+                if len(pending_queue_items) >= config.DB_BATCH_SIZE:
+                    flush_queue()
 
             if decision.embed_now:
                 # carry per-sale fields + enrichment fields for the embed doc
@@ -134,7 +155,13 @@ class Ingestor:
                 if len(rows_to_embed) >= config.EMBED_BATCH_SIZE:
                     flush_embeds()
 
-        # Final flush for any remainder.
+        # Final flush for any remainder. Order matters: records must land
+        # before we try to embed (embed doesn't depend on it, but keeping the
+        # enrichment cache ahead of embeddings avoids a window where a vector
+        # exists with no backing domain_enrichment row) and before the
+        # embed-triggered mark_embedded_many update.
+        flush_records()
+        flush_queue()
         flush_embeds()
 
         logger.info(
@@ -228,6 +255,48 @@ class Ingestor:
 
         logger.info("Backfill complete. Cache stats: %s", self.cache.stats())
 
+    def enqueue_tier(self, min_price: float) -> Dict[str, int]:
+        """
+        Queue every domain with a sale >= min_price that has no vector yet for
+        LLM enrichment (nothing is embedded here; the LLM worker embeds after
+        it writes the description). The rule-engine result is saved as the
+        starting domain_enrichment row (keywords/tokens the worker reuses).
+        Domains that already have vectors are skipped, so they are never
+        replaced. Idempotent: re-running just re-queues what is still pending.
+        """
+        sales = self.client.tier_sales(min_price)
+        stats = {"domains": len(sales), "premium": 0, "high_value": 0}
+        records, items = [], []
+        for s in sales:
+            enriched = rule_engine.enrich(s["domain"])
+            reason = "premium_domain" if s["price"] >= config.PREMIUM_PRICE_THRESHOLD else "high_value"
+            stats["premium" if reason == "premium_domain" else "high_value"] += 1
+            records.append({
+                "domain": enriched["domain"],
+                "sld": enriched["sld"],
+                "tld": enriched["tld"],
+                "primary_category": enriched["primary_category"],
+                "secondary_category": enriched["secondary_category"],
+                "keywords": enriched["keywords"],
+                "tokens": enriched["tokens"],
+                "descriptions": [enriched["description"]],
+                "confidence": enriched["confidence"],
+                "source": "rule",
+                "status": "queued_for_llm",
+                "queue_reason": reason,
+                "embedded": False,
+            })
+            items.append((s["domain"], reason))
+            if len(records) >= config.DB_BATCH_SIZE:
+                self.cache.upsert_many(records)
+                self.queue.enqueue_many(items)
+                records.clear()
+                items.clear()
+        self.cache.upsert_many(records)
+        self.queue.enqueue_many(items)
+        logger.info("Tier >= %s queued for LLM: %s", min_price, stats)
+        return stats
+
     def daily(self, day: Optional[date] = None) -> None:
         """Pull a single day (default yesterday), mirroring NameBio's cron."""
         if day is None:
@@ -254,6 +323,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="NameBio ingest pipeline")
     parser.add_argument("--backfill", action="store_true", help="Run a date-range backfill")
     parser.add_argument("--daily", action="store_true", help="Ingest yesterday (cron)")
+    parser.add_argument("--enqueue-tier", action="store_true",
+                        help="Queue all domains with a sale >= --min-price for LLM enrichment")
+    parser.add_argument("--min-price", type=float, default=5000,
+                        help="Price floor for --enqueue-tier (default 5000)")
     parser.add_argument("--from", dest="date_from", type=_parse_date)
     parser.add_argument("--to", dest="date_to", type=_parse_date)
     parser.add_argument("--date", dest="single_date", type=_parse_date,
@@ -268,8 +341,10 @@ def main(argv=None):
             ingestor.backfill(args.date_from, args.date_to)
         elif args.daily:
             ingestor.daily(args.single_date)
+        elif args.enqueue_tier:
+            ingestor.enqueue_tier(args.min_price)
         else:
-            parser.error("Specify --backfill or --daily")
+            parser.error("Specify --backfill, --daily or --enqueue-tier")
     finally:
         ingestor.close()
 

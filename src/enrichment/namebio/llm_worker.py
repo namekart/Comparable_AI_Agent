@@ -16,6 +16,7 @@ process or a cron:
 
 import argparse
 import logging
+import threading
 from typing import Dict, Optional
 
 import config
@@ -25,6 +26,7 @@ from src.enrichment.namebio import db
 from src.enrichment.namebio.embedder import Embedder
 from src.enrichment.namebio.enrichment_cache import EnrichmentCache
 from src.enrichment.namebio.queue import LLMQueue
+from src.enrichment.namebio.sales_source import NamebioSalesSource
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,6 +73,10 @@ class LLMWorker:
         self.cache = cache or EnrichmentCache(conn=self.conn)
         self.queue = queue or LLMQueue(conn=self.conn)
         self.embedder = embedder or Embedder(conn=self.conn)
+        self.sales = NamebioSalesSource(conn=self.conn)
+        self.min_priority = 0
+        self.updated_after = None
+        self.last_failed = False
 
     def _sale_meta_from_embedding(self, domain: str) -> Dict:
         """Best-effort price/date/platform from any existing embedding row."""
@@ -91,15 +97,24 @@ class LLMWorker:
                     }
         except Exception as e:  # noqa: BLE001 - metadata is optional
             logger.debug("No prior embedding metadata for %s: %s", domain, e)
+        # Domains queued before they had any vector: take their best sale from
+        # NameBio, otherwise the new vector would carry no price/date/platform.
+        try:
+            best = self.sales.best_sale_for_domain(domain)
+            if best:
+                return best
+        except Exception as e:  # noqa: BLE001
+            logger.warning("No NameBio sale found for %s: %s", domain, e)
         return {"price": None, "date": None, "platform": None}
 
     def process_one(self) -> bool:
         """Claim and process a single job. Returns False when queue is empty."""
-        job = self.queue.claim_next()
+        job = self.queue.claim_next(self.min_priority, self.updated_after)
         if not job:
             return False
 
         domain = job["domain"]
+        self.last_failed = False
         try:
             enriched = self.enricher.enrich_domain(domain, LLM_PROMPT_TEMPLATE)
             parsed = parse_domain(domain)
@@ -152,6 +167,7 @@ class LLMWorker:
         except Exception as e:  # noqa: BLE001
             logger.exception("LLM enrichment failed for %s: %s", domain, e)
             self.queue.fail(domain, str(e))
+            self.last_failed = True
             return True  # keep draining other jobs
 
     def drain(self, max_jobs: Optional[int] = None) -> int:
@@ -169,16 +185,64 @@ class LLMWorker:
         self.conn.close()
 
 
+def run_workers(workers: int = 1, max_jobs: Optional[int] = None, min_priority: int = 0,
+                updated_after=None, max_consecutive_failures: int = 20) -> Dict[str, int]:
+    """
+    Drain the queue with `workers` parallel threads sharing one embedding
+    model (each has its own DB connection). Stops early if the LLM keeps
+    failing, so an outage can't burn every job's retry budget.
+    """
+    from sentence_transformers import SentenceTransformer
+
+    model = SentenceTransformer(config.EMBEDDING_MODEL)
+    lock = threading.Lock()
+    state = {"left": max_jobs, "done": 0, "failed": 0, "streak": 0, "stop": False}
+
+    def run():
+        conn = db.connect()
+        worker = LLMWorker(conn=conn, embedder=Embedder(model=model, conn=conn))
+        worker.min_priority = min_priority
+        worker.updated_after = updated_after
+        try:
+            while True:
+                with lock:
+                    if state["stop"] or (state["left"] is not None and state["left"] <= 0):
+                        return
+                    if state["left"] is not None:
+                        state["left"] -= 1
+                if not worker.process_one():
+                    return
+                with lock:
+                    if worker.last_failed:
+                        state["failed"] += 1
+                        state["streak"] += 1
+                        if state["streak"] >= max_consecutive_failures:
+                            state["stop"] = True
+                            logger.error("%d consecutive LLM failures; stopping this run.", state["streak"])
+                    else:
+                        state["done"] += 1
+                        state["streak"] = 0
+        finally:
+            worker.close()
+
+    threads = [threading.Thread(target=run, name=f"llm-worker-{i}") for i in range(max(1, workers))]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    logger.info("LLM run finished: %d described, %d failed", state["done"], state["failed"])
+    return {"done": state["done"], "failed": state["failed"]}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="LLM enrichment queue worker")
     parser.add_argument("--max", type=int, default=None,
                         help="Max jobs to process (default: drain until empty)")
+    parser.add_argument("--workers", type=int, default=1, help="Parallel workers")
+    parser.add_argument("--min-priority", type=int, default=0,
+                        help="Only claim jobs with priority >= this (25 = sales $5k+ tier)")
     args = parser.parse_args(argv)
-    worker = LLMWorker()
-    try:
-        worker.drain(args.max)
-    finally:
-        worker.close()
+    run_workers(args.workers, args.max, args.min_priority)
 
 
 if __name__ == "__main__":

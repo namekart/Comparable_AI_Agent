@@ -12,6 +12,8 @@ import json
 import logging
 from typing import Dict, List, Optional
 
+from psycopg2.extras import execute_values
+
 import config
 from src.enrichment.namebio import db
 
@@ -96,14 +98,57 @@ class EnrichmentCache:
         with db.cursor(self.conn) as cur:
             cur.execute(sql, values)
 
+    def upsert_many(self, records: List[Dict]) -> None:
+        """
+        Batched version of upsert(): one round trip for the whole list instead
+        of one per record. This is the difference between ~2,500 network round
+        trips (~600ms each over a remote pooler) and one per ingest date.
+        """
+        if not records:
+            return
+
+        json_cols = {"keywords", "tokens", "descriptions"}
+        rows = []
+        for record in records:
+            record = dict(record)
+            record["domain"] = record["domain"].lower()
+            record.setdefault("enrichment_version", config.CURRENT_ENRICHMENT_VERSION)
+            record.setdefault("embedding_version", config.CURRENT_EMBEDDING_VERSION)
+            row = []
+            for c in _COLUMNS:
+                v = record.get(c)
+                if c in json_cols:
+                    v = json.dumps(v if v is not None else [])
+                row.append(v)
+            rows.append(tuple(row))
+
+        update_cols = [c for c in _COLUMNS if c != "domain"]
+        set_clause = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_cols) + ", updated_at = now()"
+        template = "(" + ", ".join(
+            "%s::jsonb" if c in json_cols else "%s" for c in _COLUMNS
+        ) + ")"
+        sql = f"""
+            INSERT INTO domain_enrichment ({", ".join(_COLUMNS)})
+            VALUES %s
+            ON CONFLICT (domain) DO UPDATE SET {set_clause};
+        """
+        with db.cursor(self.conn) as cur:
+            execute_values(cur, sql, rows, template=template, page_size=len(rows))
+
     def mark_embedded(self, domain: str, embedding_version: int = None) -> None:
+        self.mark_embedded_many([domain], embedding_version)
+
+    def mark_embedded_many(self, domains: List[str], embedding_version: int = None) -> None:
+        if not domains:
+            return
         ev = embedding_version or config.CURRENT_EMBEDDING_VERSION
+        domains = [d.lower() for d in domains]
         with db.cursor(self.conn) as cur:
             cur.execute(
                 """UPDATE domain_enrichment
                        SET embedded = true, embedding_version = %s, updated_at = now()
-                     WHERE domain = %s""",
-                (ev, domain.lower()),
+                     WHERE domain = ANY(%s)""",
+                (ev, domains),
             )
 
     def set_status(self, domain: str, status: str, queue_reason: str = None) -> None:
