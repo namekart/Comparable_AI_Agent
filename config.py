@@ -212,6 +212,9 @@ LOW_CONFIDENCE = float(os.getenv("LOW_CONFIDENCE", "0.20"))
 # of rule confidence (queue_reason=premium_domain).
 PREMIUM_PRICE_THRESHOLD = float(os.getenv("PREMIUM_PRICE_THRESHOLD", "10000"))
 
+# Sales at/above this price are queued ahead of ordinary sales (queue_reason=high_value).
+HIGH_VALUE_PRICE_THRESHOLD = float(os.getenv("HIGH_VALUE_PRICE_THRESHOLD", "5000"))
+
 # Versioning: bump these to selectively refresh stale rows via
 # `WHERE enrichment_version < CURRENT_ENRICHMENT_VERSION`.
 CURRENT_ENRICHMENT_VERSION = int(os.getenv("CURRENT_ENRICHMENT_VERSION", "1"))
@@ -232,4 +235,5 @@ QUEUE_PRIORITY = {
     "demand": 20,
     "embeddings_missing": 15,
     "low_confidence": 10,
+    "standard": 5,
 }

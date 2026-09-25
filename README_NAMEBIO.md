@@ -9,6 +9,14 @@ unaffordable LLM-per-domain backfill.
 
 ## 1. The core idea — route computation by information content
 
+> **Since 2026-09-25 every description comes from the LLM.** The rule engine no
+> longer produces embedded descriptions; it only saves keywords/tokens and a
+> confidence score. Every new domain is queued for the LLM, and the queue drains
+> by sale price (premium 30 > high_value 25 > low_confidence 10 > standard 5), so
+> when the LLM has a daily request cap the most valuable sales are described
+> first. Nothing is embedded until its LLM description exists. The confidence
+> bands below describe the earlier rule-based routing.
+
 A deterministic **rule engine** enriches every domain for free and emits a
 **confidence score**. That score (plus sale price and real user demand) decides
 which small, high-information subset is worth an expensive LLM call. Every
@@ -129,7 +137,7 @@ variables (set these in production — do **not** commit secrets):
 | `DB_SEARCH_PATH` | `comparable, public` | set on every connection (needs a session-level connection, e.g. direct Postgres) |
 | `SUPABASE_HOST` / `SUPABASE_PORT` | — / `5432` | Hetzner: `100.74.166.27` / `54322` (direct Postgres over Tailscale) |
 | `HIGH_CONFIDENCE` / `MEDIUM_CONFIDENCE` / `LOW_CONFIDENCE` | `0.75` / `0.45` / `0.20` | routing bands |
-| `PREMIUM_PRICE_THRESHOLD` | `10000` | sale price forcing LLM enrichment |
+| `PREMIUM_PRICE_THRESHOLD` / `HIGH_VALUE_PRICE_THRESHOLD` | `10000` / `5000` | sale price for queue priority 30 / 25 |
 | `EMBED_BATCH_SIZE` | `256` | embed/flush chunk size (durability) |
 | `CURRENT_ENRICHMENT_VERSION` / `CURRENT_EMBEDDING_VERSION` | `1` / `1` | bump to selectively refresh stale rows |
 | `SUPABASE_*` | — | existing DB credentials |
