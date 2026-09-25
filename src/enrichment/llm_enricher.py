@@ -8,13 +8,18 @@ class LLMEnricher:
     """Handles LLM-based enrichment of domain names"""
 
     def __init__(self):
+        # OpenRouter's `models` list falls through to the next model if one
+        # fails; other providers don't understand it.
+        extra = {}
+        if "openrouter.ai" in config.LLM_BASE_URL:
+            extra = {"extra_body": {"models": [config.LLM_MODEL, *config.LLM_FALLBACK_MODELS]}}
         self.llm = ChatOpenAI(
             model=config.LLM_MODEL,
             temperature=0.05,
-            api_key=config.OPENROUTER_API_KEY,
-            base_url="https://openrouter.ai/api/v1",  # OpenRouter API endpoint
-            # OpenRouter's `models` list: falls through to the next model if one fails.
-            model_kwargs={"extra_body": {"models": [config.LLM_MODEL, *config.LLM_FALLBACK_MODELS]}},
+            api_key=config.LLM_API_KEY,
+            base_url=config.LLM_BASE_URL,
+            timeout=120,
+            model_kwargs=extra,
         )
     def enrich_domain(self, domain_name:str,prompt_template:str)-> dict:
         """

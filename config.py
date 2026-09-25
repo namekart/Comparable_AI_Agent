@@ -3,6 +3,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+# OpenAI-compatible endpoint + key used for domain descriptions. Defaults to
+# OpenRouter; set LLM_BASE_URL / LLM_API_KEY / LLM_MODEL to use another provider.
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
+LLM_API_KEY = os.getenv("LLM_API_KEY") or OPENROUTER_API_KEY
 # OpenRouter model id. ":free" models cost nothing but are rate-limited
 # (daily cap per key, and can be busy upstream). Override via env.
 LLM_MODEL = os.getenv("LLM_MODEL", "nvidia/nemotron-3-super-120b-a12b:free")
@@ -216,9 +220,15 @@ CURRENT_EMBEDDING_VERSION = int(os.getenv("CURRENT_EMBEDDING_VERSION", "1"))
 # Embedding batch size for the local sentence-transformers encoder.
 EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "256"))
 
+# How many domain_enrichment upserts / queue enqueues to batch into a single
+# round trip during ingest. Independent of EMBED_BATCH_SIZE (encoder cost
+# scales with batch size; DB batching does not need to match it).
+DB_BATCH_SIZE = int(os.getenv("DB_BATCH_SIZE", "500"))
+
 # Queue priorities (higher drains first).
 QUEUE_PRIORITY = {
     "premium_domain": 30,
+    "high_value": 25,
     "demand": 20,
     "embeddings_missing": 15,
     "low_confidence": 10,

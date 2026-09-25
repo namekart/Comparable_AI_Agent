@@ -14,6 +14,7 @@ queued_for_llm rows are never embedded, avoiding double embedding work.
 """
 
 import logging
+import threading
 from typing import Dict, List
 
 from sentence_transformers import SentenceTransformer
@@ -50,6 +51,9 @@ def _embedding_to_pg(vec: List[float]) -> str:
     return "[" + ",".join(map(str, vec)) + "]"
 
 
+_ENCODE_LOCK = threading.Lock()  # one SentenceTransformer may be shared by worker threads
+
+
 class Embedder:
     def __init__(self, model: SentenceTransformer = None, conn=None):
         self.model = model or SentenceTransformer(config.EMBEDDING_MODEL)
@@ -58,11 +62,12 @@ class Embedder:
         self.table = config.DOMAIN_EMBEDDINGS_TABLE
 
     def encode(self, texts: List[str]) -> List[List[float]]:
-        vectors = self.model.encode(
-            texts,
-            normalize_embeddings=True,
-            batch_size=config.EMBED_BATCH_SIZE,
-        ).tolist()
+        with _ENCODE_LOCK:
+            vectors = self.model.encode(
+                texts,
+                normalize_embeddings=True,
+                batch_size=config.EMBED_BATCH_SIZE,
+            ).tolist()
         # Hard guard: the live column is vector(384); never write a mismatch.
         if vectors and len(vectors[0]) != EXPECTED_DIM:
             raise ValueError(
@@ -134,8 +139,14 @@ class Embedder:
         """
         import json
 
+        from psycopg2.extras import execute_values
+
         # Group rows by domain so we delete each domain's prior vectors once.
         domains = sorted({m["domain"] for m in metadatas})
+        rows = [
+            (documents[i], json.dumps(metadatas[i]), _embedding_to_pg(vectors[i]))
+            for i in range(len(metadatas))
+        ]
 
         with db.cursor(self.conn) as cur:
             # Remove any prior vectors for these domains (all desc indices).
@@ -146,17 +157,12 @@ class Embedder:
             )
             insert_sql = f"""
                 INSERT INTO {self.table} (content, metadata, embedding)
-                VALUES (%s, %s::jsonb, %s::vector);
+                VALUES %s;
             """
-            for i in range(len(metadatas)):
-                cur.execute(
-                    insert_sql,
-                    (
-                        documents[i],
-                        json.dumps(metadatas[i]),
-                        _embedding_to_pg(vectors[i]),
-                    ),
-                )
+            execute_values(
+                cur, insert_sql, rows,
+                template="(%s, %s::jsonb, %s::vector)", page_size=len(rows),
+            )
 
     def close(self):
         if self._own_conn and self.conn:

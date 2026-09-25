@@ -8,7 +8,9 @@ drains the queue asynchronously, highest priority first
 """
 
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
+
+from psycopg2.extras import execute_values
 
 import config
 from src.enrichment.namebio import db
@@ -48,10 +50,37 @@ class LLMQueue:
                 (domain, queue_reason, priority),
             )
 
-    def claim_next(self) -> Optional[Dict]:
+    def enqueue_many(self, items: List[Tuple[str, str]]) -> None:
+        """Batched version of enqueue(): one round trip for the whole list."""
+        if not items:
+            return
+        rows = [
+            (domain.lower(), queue_reason, config.QUEUE_PRIORITY.get(queue_reason, 0))
+            for domain, queue_reason in items
+        ]
+        sql = """
+            INSERT INTO llm_enrichment_queue (domain, queue_reason, priority, status)
+            VALUES %s
+            ON CONFLICT (domain) DO UPDATE SET
+                queue_reason = CASE
+                    WHEN EXCLUDED.priority > llm_enrichment_queue.priority
+                    THEN EXCLUDED.queue_reason ELSE llm_enrichment_queue.queue_reason END,
+                priority = GREATEST(llm_enrichment_queue.priority, EXCLUDED.priority),
+                -- re-open a finished/failed job if it's requested again
+                status = CASE
+                    WHEN llm_enrichment_queue.status IN ('done', 'failed')
+                    THEN 'pending' ELSE llm_enrichment_queue.status END,
+                updated_at = now();
+        """
+        with db.cursor(self.conn) as cur:
+            execute_values(cur, sql, rows, template="(%s, %s, %s, 'pending')", page_size=len(rows))
+
+    def claim_next(self, min_priority: int = 0, updated_after=None) -> Optional[Dict]:
         """
         Atomically claim the highest-priority pending job (FOR UPDATE SKIP
         LOCKED so multiple workers don't collide). Returns the row or None.
+        Only jobs with priority >= min_priority (and, if given, updated at or
+        after `updated_after`) are considered.
         """
         with db.cursor(self.conn) as cur:
             cur.execute(
@@ -60,13 +89,15 @@ class LLMQueue:
                    SET status = 'processing', attempts = attempts + 1, updated_at = now()
                  WHERE id = (
                      SELECT id FROM llm_enrichment_queue
-                      WHERE status = 'pending'
+                      WHERE status = 'pending' AND priority >= %s
+                        AND (%s::timestamptz IS NULL OR updated_at >= %s)
                       ORDER BY priority DESC, created_at ASC
                       FOR UPDATE SKIP LOCKED
                       LIMIT 1
                  )
                 RETURNING *;
-                """
+                """,
+                (min_priority, updated_after, updated_after),
             )
             return cur.fetchone()
 

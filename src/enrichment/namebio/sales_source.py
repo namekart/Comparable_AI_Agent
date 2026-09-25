@@ -14,7 +14,7 @@ the shape the ingest pipeline expects:
 
 import logging
 from datetime import date
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import config
 from src.enrichment.namebio import db
@@ -58,3 +58,51 @@ class NamebioSalesSource:
         ]
         logger.info("NameBio %s: read %d sales from %s", day, len(sales), self.table)
         return sales
+
+    def tier_sales(self, min_price: float) -> List[Dict]:
+        """
+        One representative sale (the highest-priced) per domain with a sale at
+        or above `min_price`, skipping domains that already have a vector so
+        their existing embeddings are never replaced.
+        """
+        with db.cursor(self.conn) as cur:
+            cur.execute(
+                f"""SELECT DISTINCT ON (lower(s.domain))
+                           lower(s.domain) AS domain, s.price, s.sale_date, s.marketplace
+                      FROM {self.table} s
+                     WHERE s.price >= %s
+                       AND NOT EXISTS (
+                           SELECT 1 FROM {config.DOMAIN_EMBEDDINGS_TABLE} e
+                            WHERE e.metadata->>'domain' = lower(s.domain))
+                     ORDER BY lower(s.domain), s.price DESC, s.sale_date DESC""",
+                (min_price,),
+            )
+            rows = cur.fetchall()
+        sales = [
+            {
+                "domain": r["domain"].strip(),
+                "price": float(r["price"]),
+                "date": r["sale_date"].isoformat(),
+                "platform": r["marketplace"],
+            }
+            for r in rows
+            if r["domain"]
+        ]
+        return sorted(sales, key=lambda s: -s["price"])
+
+    def best_sale_for_domain(self, domain: str) -> Optional[Dict]:
+        with db.cursor(self.conn) as cur:
+            cur.execute(
+                f"""SELECT price, sale_date, marketplace FROM {self.table}
+                     WHERE lower(domain) = lower(%s)
+                     ORDER BY price DESC NULLS LAST, sale_date DESC LIMIT 1""",
+                (domain,),
+            )
+            r = cur.fetchone()
+        if not r:
+            return None
+        return {
+            "price": float(r["price"]) if r["price"] is not None else None,
+            "date": r["sale_date"].isoformat(),
+            "platform": r["marketplace"],
+        }
