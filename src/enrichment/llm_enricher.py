@@ -58,19 +58,27 @@ class LLMEnricher:
         # Parse JSON Response
         try:
             result = json.loads(self._clean_json(response.content))
-
-            # Validate structure
-            assert "primary_category" in result
-            assert "secondary_category" in result
-            assert "descriptions" in result
-            assert isinstance(result["descriptions"], list)
-            assert len(result["descriptions"]) >= 1
-            assert result["primary_category"] != result["secondary_category"]
-
+            self._validate_result(result)
             return result
 
-        except (json.JSONDecodeError, AssertionError) as e:
+        except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
             raise ValueError(f"Invalid LLM response format: {e}\nResponse: {response.content}")
+
+    @staticmethod
+    def _validate_result(result) -> None:
+        """Validate the LLM JSON structure. Explicit raises (not assert) so the
+        checks still run under `python -O` / PYTHONOPTIMIZE."""
+        if not isinstance(result, dict):
+            raise ValueError("response is not a JSON object")
+        for key in ("primary_category", "secondary_category", "descriptions"):
+            if key not in result:
+                raise ValueError(f"missing key: {key}")
+        if not isinstance(result["descriptions"], list):
+            raise ValueError("descriptions is not a list")
+        if len(result["descriptions"]) < 1:
+            raise ValueError("descriptions is empty")
+        if result["primary_category"] == result["secondary_category"]:
+            raise ValueError("primary_category equals secondary_category")
 
     @staticmethod
     def _clean_json(content: str) -> str:
