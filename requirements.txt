@@ -4,8 +4,8 @@ langchain-core==0.1.48
 langchain-openai==0.0.8
 langgraph==0.0.38
 
-# ML stack (pinned for torch 2.1.2)
-torch==2.1.2+cpu
+# ML stack (pinned for torch 2.6.0)
+torch==2.6.0
 transformers==4.38.2
 sentence-transformers>=2.2.0
 
