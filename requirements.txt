@@ -2,7 +2,7 @@
 # nothing imports it and it caps langchain-core below the patched versions)
 langchain-core>=1.2.22,<2
 langchain-openai>=1.0,<2
-langgraph==0.0.50
+langgraph>=1.0.10,<2
 langsmith>=0.10.9
 
 # ML stack (pinned for torch 2.6.0)
