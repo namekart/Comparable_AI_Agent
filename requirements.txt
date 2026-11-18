@@ -1,8 +1,8 @@
 # LangChain ecosystem (pinned)
-langchain==0.1.16
-langchain-core==0.1.48
-langchain-openai==0.0.8
-langgraph==0.0.38
+langchain==0.2.0
+langchain-core==0.2.0
+langchain-openai==0.1.7
+langgraph==0.0.50
 
 # ML stack (pinned for torch 2.6.0)
 torch==2.6.0
