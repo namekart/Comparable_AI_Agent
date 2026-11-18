@@ -1,7 +1,7 @@
-# LangChain ecosystem (pinned)
-langchain==0.2.0
-langchain-core==0.2.0
-langchain-openai==0.1.7
+# LangChain ecosystem (security-patched floors; `langchain` meta-package dropped -
+# nothing imports it and it caps langchain-core below the patched versions)
+langchain-core>=1.2.22,<2
+langchain-openai>=1.0,<2
 langgraph==0.0.50
 
 # ML stack (pinned for torch 2.6.0)
