@@ -1,13 +1,14 @@
-# LangChain ecosystem (pinned)
-langchain==0.2.0
-langchain-core==0.2.0
-langchain-openai==0.1.7
-langgraph==0.0.50
+# LangChain ecosystem (security-patched floors; `langchain` meta-package dropped -
+# nothing imports it and it caps langchain-core below the patched versions)
+langchain-core>=1.2.22,<2
+langchain-openai>=1.0,<2
+langgraph>=1.0.10,<2
+langsmith>=0.10.9
 
 # ML stack (pinned for torch 2.6.0)
 torch==2.6.0
 transformers==4.38.2
-sentence-transformers>=2.2.0
+sentence-transformers>=3.1.0
 
 # Others
 python-dotenv>=1.0.0
@@ -20,6 +21,6 @@ psycopg2-binary>=2.9.9
 pgvector>=0.2.3
 
 # NameBio ingest integration
-requests>=2.31.0
+requests>=2.34.0
 tenacity>=8.2.0
 APScheduler>=3.10,<4
