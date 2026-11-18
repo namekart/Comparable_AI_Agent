@@ -3,6 +3,7 @@
 langchain-core>=1.2.22,<2
 langchain-openai>=1.0,<2
 langgraph==0.0.50
+langsmith>=0.10.9
 
 # ML stack (pinned for torch 2.6.0)
 torch==2.6.0
