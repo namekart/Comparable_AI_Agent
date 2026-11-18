@@ -21,6 +21,6 @@ psycopg2-binary>=2.9.9
 pgvector>=0.2.3
 
 # NameBio ingest integration
-requests>=2.31.0
+requests>=2.34.0
 tenacity>=8.2.0
 APScheduler>=3.10,<4
