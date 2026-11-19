@@ -40,6 +40,10 @@ RUN echo "=== Verifying Installation ===" && \
     python -c "import sentence_transformers; print('✅ sentence-transformers installed')" && \
     echo "✅ Dependencies verified"
 
+# Run as non-root
+RUN useradd --create-home appuser && chown -R appuser /app
+USER appuser
+
 # Expose port 8000
 EXPOSE 8000
 

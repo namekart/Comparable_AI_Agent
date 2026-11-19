@@ -139,6 +139,7 @@ class Embedder:
         """
         import json
 
+        from psycopg2 import sql
         from psycopg2.extras import execute_values
 
         # Group rows by domain so we delete each domain's prior vectors once.
@@ -150,15 +151,14 @@ class Embedder:
 
         with db.cursor(self.conn) as cur:
             # Remove any prior vectors for these domains (all desc indices).
+            table = sql.Identifier(*self.table.split("."))
             cur.execute(
-                f"""DELETE FROM {self.table}
-                        WHERE metadata->>'domain' = ANY(%s)""",
+                sql.SQL("DELETE FROM {} WHERE metadata->>'domain' = ANY(%s)").format(table),
                 (domains,),
             )
-            insert_sql = f"""
-                INSERT INTO {self.table} (content, metadata, embedding)
-                VALUES %s;
-            """
+            insert_sql = sql.SQL(
+                "INSERT INTO {} (content, metadata, embedding) VALUES %s;"
+            ).format(table)
             execute_values(
                 cur, insert_sql, rows,
                 template="(%s, %s::jsonb, %s::vector)", page_size=len(rows),
